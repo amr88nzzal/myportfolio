@@ -9,9 +9,9 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Copy package descriptors & install dependencies
+# Copy package descriptors & install dependencies with peer resolution flag
 COPY package*.json ./
-RUN npm install
+RUN npm install --legacy-peer-deps
 
 # Copy full application code
 COPY . .
@@ -30,9 +30,9 @@ ENV PORT=3300
 # Install tsx globally for lightweight TypeScript execution
 RUN npm install -g tsx
 
-# Copy package descriptors & install production dependencies only
+# Copy package descriptors & install production dependencies
 COPY package*.json ./
-RUN npm install --only=production
+RUN npm install --omit=dev --legacy-peer-deps
 
 # Copy build artifacts and necessary source directories
 COPY --from=builder /app/dist ./dist
