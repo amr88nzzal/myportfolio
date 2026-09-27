@@ -1,0 +1,30 @@
+version: '3.8'
+
+services:
+  amro-portfolio:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: amro_portfolio_app
+    restart: always
+    ports:
+      - "3300:3300"
+    environment:
+      - PORT=3300
+      - NODE_ENV=production
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
+      - SMTP_HOST=${SMTP_HOST}
+      - SMTP_PORT=${SMTP_PORT}
+      - SMTP_USER=${SMTP_USER}
+      - SMTP_PASS=${SMTP_PASS}
+      - EMAIL_FROM=${EMAIL_FROM}
+      - EMAIL_ALERT_ADDRESS=${EMAIL_ALERT_ADDRESS}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+    volumes:
+      - portfolio_uploads:/app/src/assets/images
+
+volumes:
+  portfolio_uploads:
+    driver: local
