@@ -22,7 +22,10 @@ services:
       - GEMINI_API_KEY=${GEMINI_API_KEY}
     volumes:
       - portfolio_uploads:/app/src/assets/images
+      - portfolio_data:/app/data
 
 volumes:
   portfolio_uploads:
+    driver: local
+  portfolio_data:
     driver: local

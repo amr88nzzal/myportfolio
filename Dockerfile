@@ -40,8 +40,8 @@ COPY --from=builder /app/server.ts ./server.ts
 COPY --from=builder /app/src ./src
 COPY --from=builder /app/public ./public
 
-# Create directory for persistent user uploads
-RUN mkdir -p /app/src/assets/images
+# Create directory for persistent user uploads and database
+RUN mkdir -p /app/src/assets/images /app/data
 
 # Expose Port 3300
 EXPOSE 3300

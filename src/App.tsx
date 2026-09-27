@@ -308,39 +308,74 @@ export default function App() {
     if (portfolio.officeImage) setCustomOffice(portfolio.officeImage);
   }, [portfolio]);
 
-  // Persistent Hydration
+  // Persistent Hydration (Server First, fallback to LocalStorage)
   useEffect(() => {
-    const savedPortfolio = localStorage.getItem('amro_portfolio');
-    if (savedPortfolio) {
-      try { 
-        const parsed = JSON.parse(savedPortfolio);
-        // Automatically migrate if data structure is missing core fields or projects list is outdated
-        const needsUpdate = !parsed.portraitImage || 
-                            (!parsed.projects || parsed.projects.length < 5) ||
-                            (parsed.experiences && parsed.experiences.length > 0 && typeof parsed.experiences[0].location === 'string');
-        
-        if (needsUpdate) {
-          setPortfolio(initialPortfolioData);
-          localStorage.setItem('amro_portfolio', JSON.stringify(initialPortfolioData));
-        } else {
-          setPortfolio(parsed);
+    async function loadServerData() {
+      try {
+        const res = await fetch('/api/portfolio');
+        if (res.ok) {
+          const serverData = await res.json();
+          if (serverData && serverData.name && serverData.portraitImage) {
+            setPortfolio(serverData);
+            localStorage.setItem('amro_portfolio', JSON.stringify(serverData));
+            return;
+          }
         }
-      } catch (e) { 
-        console.error(e); 
-        setPortfolio(initialPortfolioData);
+      } catch (err) {
+        console.log('Server portfolio sync fallback to localStorage:', err);
       }
-    } else {
-      setPortfolio(initialPortfolioData);
-      localStorage.setItem('amro_portfolio', JSON.stringify(initialPortfolioData));
+
+      // Fallback to localStorage if server has no record yet
+      const savedPortfolio = localStorage.getItem('amro_portfolio');
+      if (savedPortfolio) {
+        try { 
+          const parsed = JSON.parse(savedPortfolio);
+          const needsUpdate = !parsed.portraitImage || 
+                              (!parsed.projects || parsed.projects.length < 5) ||
+                              (parsed.experiences && parsed.experiences.length > 0 && typeof parsed.experiences[0].location === 'string');
+          
+          if (needsUpdate) {
+            setPortfolio(initialPortfolioData);
+            localStorage.setItem('amro_portfolio', JSON.stringify(initialPortfolioData));
+          } else {
+            setPortfolio(parsed);
+          }
+        } catch (e) { 
+          console.error(e); 
+          setPortfolio(initialPortfolioData);
+        }
+      } else {
+        setPortfolio(initialPortfolioData);
+        localStorage.setItem('amro_portfolio', JSON.stringify(initialPortfolioData));
+      }
     }
 
-    const savedMessages = localStorage.getItem('amro_messages');
-    if (savedMessages) {
-      try { setMessages(JSON.parse(savedMessages)); } catch (e) { console.error(e); }
-    } else {
-      setMessages(initialMessages);
-      localStorage.setItem('amro_messages', JSON.stringify(initialMessages));
+    async function loadMessages() {
+      try {
+        const res = await fetch('/api/messages');
+        if (res.ok) {
+          const serverMsgs = await res.json();
+          if (Array.isArray(serverMsgs) && serverMsgs.length > 0) {
+            setMessages(serverMsgs);
+            localStorage.setItem('amro_messages', JSON.stringify(serverMsgs));
+            return;
+          }
+        }
+      } catch (err) {
+        console.log('Server messages sync fallback:', err);
+      }
+
+      const savedMessages = localStorage.getItem('amro_messages');
+      if (savedMessages) {
+        try { setMessages(JSON.parse(savedMessages)); } catch (e) { console.error(e); }
+      } else {
+        setMessages(initialMessages);
+        localStorage.setItem('amro_messages', JSON.stringify(initialMessages));
+      }
     }
+
+    loadServerData();
+    loadMessages();
 
     // Set dark mode initial
     const savedTheme = localStorage.getItem('theme');
@@ -389,11 +424,23 @@ export default function App() {
   const savePortfolioToLocal = (updatedData: PortfolioData) => {
     setPortfolio(updatedData);
     localStorage.setItem('amro_portfolio', JSON.stringify(updatedData));
+    // Persist to server disk for cross-browser / cross-device availability
+    fetch('/api/portfolio', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updatedData)
+    }).catch(err => console.error('Failed to sync portfolio to server:', err));
   };
 
   const saveMessagesToLocal = (updatedMsgs: ContactMessage[]) => {
     setMessages(updatedMsgs);
     localStorage.setItem('amro_messages', JSON.stringify(updatedMsgs));
+    // Persist messages to server disk
+    fetch('/api/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updatedMsgs)
+    }).catch(err => console.error('Failed to sync messages to server:', err));
   };
 
   const textDirection = lang === 'ar' ? 'rtl' : 'ltr';
@@ -600,6 +647,7 @@ export default function App() {
     if (window.confirm(lang === 'ar' ? 'هل أنت متأكد من استعادة البيانات الافتراضية؟' : 'Are you sure?')) {
       savePortfolioToLocal(initialPortfolioData);
       saveMessagesToLocal(initialMessages);
+      fetch('/api/reset-portfolio', { method: 'POST' }).catch(err => console.error(err));
       setIsAdminUnlocked(false);
       setShowAdminPanel(false);
       setAdminCode('');

@@ -281,6 +281,84 @@ app.post('/api/notify-telegram', async (req, res) => {
   }
 });
 
+// Data persistence directory setup
+const dataDir = path.join(process.cwd(), 'data');
+if (!fs.existsSync(dataDir)) {
+  fs.mkdirSync(dataDir, { recursive: true });
+}
+const portfolioStorePath = path.join(dataDir, 'portfolio-store.json');
+const messagesStorePath = path.join(dataDir, 'messages-store.json');
+
+// API: Get Persisted Portfolio Data
+app.get('/api/portfolio', (req, res) => {
+  try {
+    if (fs.existsSync(portfolioStorePath)) {
+      const raw = fs.readFileSync(portfolioStorePath, 'utf-8');
+      const data = JSON.parse(raw);
+      return res.json(data);
+    }
+    return res.json(null);
+  } catch (err: any) {
+    console.error('Error reading portfolio store:', err);
+    return res.status(500).json({ error: 'Failed to read portfolio store' });
+  }
+});
+
+// API: Save / Persist Portfolio Data
+app.post('/api/portfolio', (req, res) => {
+  try {
+    const portfolioData = req.body;
+    if (!portfolioData || typeof portfolioData !== 'object') {
+      return res.status(400).json({ error: 'Invalid portfolio data payload' });
+    }
+    fs.writeFileSync(portfolioStorePath, JSON.stringify(portfolioData, null, 2), 'utf-8');
+    console.log('[PORTFOLIO SYNC] Successfully persisted portfolio changes to disk!');
+    return res.json({ success: true, message: 'Portfolio data saved successfully' });
+  } catch (err: any) {
+    console.error('Error saving portfolio store:', err);
+    return res.status(500).json({ error: 'Failed to save portfolio store: ' + err.message });
+  }
+});
+
+// API: Reset Portfolio to Default
+app.post('/api/reset-portfolio', (req, res) => {
+  try {
+    if (fs.existsSync(portfolioStorePath)) {
+      fs.unlinkSync(portfolioStorePath);
+    }
+    return res.json({ success: true, message: 'Portfolio reset to default successfully' });
+  } catch (err: any) {
+    console.error('Error resetting portfolio store:', err);
+    return res.status(500).json({ error: 'Failed to reset portfolio store' });
+  }
+});
+
+// API: Get Persisted Messages
+app.get('/api/messages', (req, res) => {
+  try {
+    if (fs.existsSync(messagesStorePath)) {
+      const raw = fs.readFileSync(messagesStorePath, 'utf-8');
+      return res.json(JSON.parse(raw));
+    }
+    return res.json([]);
+  } catch (err: any) {
+    console.error('Error reading messages store:', err);
+    return res.status(500).json({ error: 'Failed to read messages store' });
+  }
+});
+
+// API: Save Persisted Messages
+app.post('/api/messages', (req, res) => {
+  try {
+    const msgs = req.body;
+    fs.writeFileSync(messagesStorePath, JSON.stringify(msgs, null, 2), 'utf-8');
+    return res.json({ success: true });
+  } catch (err: any) {
+    console.error('Error saving messages store:', err);
+    return res.status(500).json({ error: 'Failed to save messages store' });
+  }
+});
+
 // API: Send Email Alert (via SMTP Nodemailer or Logger)
 app.post('/api/notify-email', async (req, res) => {
   try {
