@@ -1,6 +1,6 @@
 # ==========================================
 # Amro Nazzal Executive Portfolio - Dockerfile
-# Optimized for Oracle Cloud VM & Cloudflare
+# Optimized for Oracle Cloud ARM64 & x86_64
 # Target Port: 3300
 # ==========================================
 
@@ -9,9 +9,9 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Copy package descriptors & install all dependencies
+# Copy package descriptors & install dependencies
 COPY package*.json ./
-RUN npm ci
+RUN npm install
 
 # Copy full application code
 COPY . .
@@ -32,7 +32,7 @@ RUN npm install -g tsx
 
 # Copy package descriptors & install production dependencies only
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm install --only=production
 
 # Copy build artifacts and necessary source directories
 COPY --from=builder /app/dist ./dist
