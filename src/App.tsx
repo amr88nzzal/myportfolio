@@ -847,53 +847,22 @@ export default function App() {
   };
 
   const downloadCvFile = (chosenLang: 'en' | 'ar' | 'de') => {
-    const filename = chosenLang === 'ar' 
-      ? 'Amro_Nazzal_CV_Arabic.txt' 
-      : chosenLang === 'de' 
-      ? 'Amro_Nazzal_CV_Deutsch.txt' 
-      : 'Amro_Nazzal_CV_English.txt';
+    const pdfUrl = chosenLang === 'de'
+      ? '/Amro_Nazzal_Lebenslauf_DE.pdf'
+      : '/Amro_Nazzal_CV_EN.pdf';
 
-    const content = `========================================================================
-RESUME OF AMRO NAZZAL - ${chosenLang.toUpperCase()} VERSION
-Financial Systems Specialist & Full-Stack Developer | Leipzig, Germany
-Email: info@amrodev.com | Phone: +4915560099668 | Web: https://afaq.amrodev.com
-========================================================================
+    const filename = chosenLang === 'de'
+      ? 'Amro_Nazzal_Lebenslauf_DE.pdf'
+      : chosenLang === 'ar'
+      ? 'Amro_Nazzal_CV_AR.pdf'
+      : 'Amro_Nazzal_CV_EN.pdf';
 
-PROFILE SUMMARY:
-${portfolio.summary[chosenLang]}
-
-WORK EXPERIENCE:
-${portfolio.experiences.map(exp => `
-* ${exp.company} (${exp.period})
-  Role: ${exp.role[chosenLang]}
-  Location: ${exp.location[chosenLang]}
-  Highlights:
-  ${exp.highlights[chosenLang].map(hl => `  - ${hl}`).join('\n')}
-`).join('\n')}
-
-CORE SKILLS:
-${portfolio.skills.map(cat => `
-* ${cat.title[chosenLang]}:
-  ${cat.skills.map(sk => `${sk.name} (${sk.level}/5)`).join(', ')}
-`).join('\n')}
-
-ACADEMIC QUALIFICATIONS:
-${portfolio.education.map(edu => `
-* ${edu.degree[chosenLang]}
-  ${edu.school[chosenLang]} (${edu.period})
-  Details: ${edu.details[chosenLang]}
-`).join('\n')}
-`;
-
-    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
-    link.href = url;
+    link.href = pdfUrl;
     link.download = filename;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    URL.revokeObjectURL(url);
   };
 
   const handlePrintCV = (chosenLang: 'en' | 'ar' | 'de') => {

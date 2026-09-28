@@ -462,6 +462,13 @@ if (!fs.existsSync(uploadsDir)) {
 }
 app.use('/src/assets/images', express.static(uploadsDir));
 
+// Serve public assets (PDF CVs, icons, etc.)
+const publicStaticDir = path.join(process.cwd(), 'public');
+if (!fs.existsSync(publicStaticDir)) {
+  fs.mkdirSync(publicStaticDir, { recursive: true });
+}
+app.use(express.static(publicStaticDir));
+
 // Serve static files or Vite middleware
 if (process.env.NODE_ENV === 'production') {
   app.use(express.static(path.join(__dirname, 'dist')));
