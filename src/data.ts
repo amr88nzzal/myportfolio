@@ -2,8 +2,8 @@ import { PortfolioData } from './types';
 
 export const initialPortfolioData: PortfolioData = {
   name: "Amro Nazzal",
-  portraitImage: "/src/assets/images/amro_id_portrait.jpg",
-  officeImage: "/src/assets/images/amro_office_executive.jpg",
+  portraitImage: "/src/assets/images/profile.jpg",
+  officeImage: "/src/assets/images/profile.jpg",
   title: {
     en: "Financial Systems Specialist & Full-Stack Developer",
     ar: "أخصائي نظم مالية ومطور ويب متكامل",
