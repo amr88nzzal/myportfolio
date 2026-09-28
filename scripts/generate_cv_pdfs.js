@@ -365,9 +365,19 @@ function generateGermanPDF(outputPath) {
   console.log('Created German CV PDF:', outputPath);
 }
 
-// Generate both files in public/ and src/assets/docs/
-generateEnglishPDF(path.join(publicDir, 'Amro_Nazzal_CV_EN.pdf'));
-generateEnglishPDF(path.join(assetsDocsDir, 'Amro_Nazzal_CV_EN.pdf'));
+// Generate files only if they do not exist to prevent overwriting custom uploaded CVs
+const enPublicPath = path.join(publicDir, 'Amro_Nazzal_CV_EN.pdf');
+const dePublicPath = path.join(publicDir, 'Amro_Nazzal_Lebenslauf_DE.pdf');
 
-generateGermanPDF(path.join(publicDir, 'Amro_Nazzal_Lebenslauf_DE.pdf'));
-generateGermanPDF(path.join(assetsDocsDir, 'Amro_Nazzal_Lebenslauf_DE.pdf'));
+if (!fs.existsSync(enPublicPath)) {
+  generateEnglishPDF(enPublicPath);
+}
+if (!fs.existsSync(dePublicPath)) {
+  generateGermanPDF(dePublicPath);
+}
+if (!fs.existsSync(path.join(assetsDocsDir, 'Amro_Nazzal_CV_EN.pdf')) && fs.existsSync(enPublicPath)) {
+  fs.copyFileSync(enPublicPath, path.join(assetsDocsDir, 'Amro_Nazzal_CV_EN.pdf'));
+}
+if (!fs.existsSync(path.join(assetsDocsDir, 'Amro_Nazzal_Lebenslauf_DE.pdf')) && fs.existsSync(dePublicPath)) {
+  fs.copyFileSync(dePublicPath, path.join(assetsDocsDir, 'Amro_Nazzal_Lebenslauf_DE.pdf'));
+}
