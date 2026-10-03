@@ -22,7 +22,7 @@
     transition: background-color 0.3s ease, color 0.3s ease;
   }
 
-  /* Explicit dark mode contrast guarantees */
+  /* Dark mode color defaults */
   .dark {
     color-scheme: dark;
   }
@@ -30,25 +30,6 @@
   .dark body {
     background-color: #0E0E11;
     color: #F4F4F5;
-  }
-
-  .dark h1, .dark h2, .dark h3, .dark h4 {
-    color: #FFFFFF !important;
-  }
-
-  .dark p, .dark span:not(.text-amber-600) {
-    color: #D4D4D8;
-  }
-
-  .dark .text-slate-900, 
-  .dark .text-slate-800, 
-  .dark .text-slate-700 {
-    color: #F4F4F5 !important;
-  }
-
-  .dark .text-slate-600, 
-  .dark .text-slate-500 {
-    color: #A1A1AA !important;
   }
 
   /* Support for RTL and LTR specifically */
