@@ -86,9 +86,9 @@ const translations: Record<string, any> = {
     uploadSuccess: "CV analyzed successfully by Gemini!",
     qrContactTitle: "Scan to Save Contact",
     qrContactSub: "Scan this QR code to message Amro instantly on WhatsApp and save his vCard details.",
-    githubHeader: "Live GitHub Repository Hub",
-    githubSub: "Real-time fetched public repositories and contributions from Amr's professional development profile",
-    githubViewAll: "View Public Repos on GitHub"
+    githubHeader: "GitHub Contributions (Last Year)",
+    githubSub: "Live contribution heatmap, statistics, and activity stream over the past 365 days from @amr88nzzal",
+    githubViewAll: "View Profile on GitHub"
   },
   ar: {
     navHome: "الملف المهني",
@@ -161,9 +161,9 @@ const translations: Record<string, any> = {
     uploadSuccess: "تم تحليل السيرة الذاتية بنجاح بواسطة Gemini!",
     qrContactTitle: "رمز التواصل السريع QR",
     qrContactSub: "امسح الرمز ضوئياً للتواصل المباشر مع عمرو عبر واتساب وحفظ بياناته في هاتفك.",
-    githubHeader: "مستودعات غيتهوب المباشرة",
-    githubSub: "استعراض حقيقي ومباشر للمشاريع البرمجية العامة لعمرو والنشاط البرمجي من حسابه الشخصي",
-    githubViewAll: "استعراض كافة المشاريع على غيتهوب"
+    githubHeader: "مساهمات غيتهوب خلال السنة الماضية",
+    githubSub: "خارطة حرارية تفاعلية لمساهمات غيتهوب، وإحصائيات وسجل الأنشطة البرمجية خلال الـ 365 يوماً الماضية للحساب amr88nzzal@",
+    githubViewAll: "زيارة الحساب على غيتهوب"
   },
   de: {
     navHome: "Führungskraft",
@@ -236,9 +236,9 @@ const translations: Record<string, any> = {
     uploadSuccess: "Lebenslauf erfolgreich von Gemini analysiert!",
     qrContactTitle: "Schneller QR-Kontakt",
     qrContactSub: "Scannen Sie diesen QR-Code, um Amro direkt auf WhatsApp zu kontaktieren und Kontakte zu speichern.",
-    githubHeader: "Live GitHub Repository Hub",
-    githubSub: "Echtzeit-abgerufene öffentliche Repositories und Aktivitäten von Amros GitHub-Konto",
-    githubViewAll: "Alle Repositories auf GitHub ansehen"
+    githubHeader: "GitHub-Beiträge (Letztes Jahr)",
+    githubSub: "Interaktive GitHub-Beitrags-Heatmap, Statistiken und Aktivitäts-Stream der letzten 365 Tage von @amr88nzzal",
+    githubViewAll: "GitHub-Profil ansehen"
   }
 };
 
@@ -271,8 +271,9 @@ export default function App() {
   const [lastSubmittedMessage, setLastSubmittedMessage] = useState<any | null>(null);
   const [showAutoReply, setShowAutoReply] = useState<boolean>(false);
 
-  // GitHub Repos state
+  // GitHub Repos and Events state
   const [githubRepos, setGithubRepos] = useState<any[]>([]);
+  const [githubEvents, setGithubEvents] = useState<any[]>([]);
   const [githubUser, setGithubUser] = useState<any | null>(null);
   const [loadingGithub, setLoadingGithub] = useState<boolean>(true);
 
@@ -395,14 +396,16 @@ export default function App() {
     }
   }, [darkMode]);
 
-  // Fetch real GitHub info on mount
+  // Fetch real GitHub info and contribution events on mount
   useEffect(() => {
     async function fetchGithub() {
       try {
         setLoadingGithub(true);
-        const [userRes, reposRes] = await Promise.all([
-          fetch('https://api.github.com/users/amr88nzzal'),
-          fetch('https://api.github.com/users/amr88nzzal/repos?sort=updated&per_page=6')
+        const username = portfolio.socials.github ? portfolio.socials.github.split('/').filter(Boolean).pop() || 'amr88nzzal' : 'amr88nzzal';
+        const [userRes, reposRes, eventsRes] = await Promise.all([
+          fetch(`https://api.github.com/users/${username}`),
+          fetch(`https://api.github.com/users/${username}/repos?sort=updated&per_page=6`),
+          fetch(`https://api.github.com/users/${username}/events?per_page=10`)
         ]);
         if (userRes.ok) {
           const userObj = await userRes.json();
@@ -412,6 +415,10 @@ export default function App() {
           const reposArr = await reposRes.json();
           setGithubRepos(Array.isArray(reposArr) ? reposArr : []);
         }
+        if (eventsRes.ok) {
+          const eventsArr = await eventsRes.json();
+          setGithubEvents(Array.isArray(eventsArr) ? eventsArr : []);
+        }
       } catch (err) {
         console.error('Error querying GitHub API:', err);
       } finally {
@@ -419,7 +426,7 @@ export default function App() {
       }
     }
     fetchGithub();
-  }, []);
+  }, [portfolio.socials.github]);
 
   const savePortfolioToLocal = (updatedData: PortfolioData) => {
     setPortfolio(updatedData);
@@ -973,9 +980,6 @@ export default function App() {
             </a>
             <a href="#github" onClick={() => setActiveSection('github')} className={`hover:text-amber-600 transition-colors ${activeSection === 'github' ? 'text-amber-600 font-bold' : 'text-slate-600 dark:text-zinc-400'}`}>
               GitHub
-            </a>
-            <a href="#matcher" onClick={() => setActiveSection('matcher')} className={`hover:text-amber-600 transition-colors ${activeSection === 'matcher' ? 'text-amber-600 font-bold' : 'text-slate-600 dark:text-zinc-400'}`}>
-              {translations[lang].navMatcher}
             </a>
             <a href="#contact" onClick={() => setActiveSection('contact')} className={`hover:text-amber-600 transition-colors ${activeSection === 'contact' ? 'text-amber-600 font-bold' : 'text-slate-600 dark:text-zinc-400'}`}>
               {translations[lang].navContact}
@@ -2057,203 +2061,173 @@ export default function App() {
           </div>
         </section>
 
-        {/* LIVE GITHUB INTEGRATION HUB */}
-        <section id="github" className="bg-[#FAF9F5]/40 dark:bg-slate-900/10 border border-slate-200 dark:border-slate-800 p-6 sm:p-8 rounded-2xl max-w-4xl mx-auto space-y-6">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pb-4 border-b border-slate-200 dark:border-slate-800/60">
+        {/* GITHUB CONTRIBUTIONS & ACTIVITY HUB (LAST YEAR) */}
+        <section id="github" className="bg-[#FAF9F5]/80 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800 p-6 sm:p-8 rounded-2xl max-w-4xl mx-auto space-y-6 shadow-sm">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pb-4 border-b border-slate-200 dark:border-slate-800/80">
             <div className="space-y-1">
               <h2 className="text-xl sm:text-2xl font-display font-bold tracking-tight flex items-center gap-2">
-                <Github size={20} className="text-amber-600" />
+                <Github size={22} className="text-amber-600" />
                 <span>{translations[lang].githubHeader}</span>
               </h2>
               <p className="text-xs text-slate-500 dark:text-zinc-400">{translations[lang].githubSub}</p>
             </div>
-            {githubUser && (
-              <a href={portfolio.socials.github} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-xs font-bold uppercase text-amber-600 hover:underline">
+            {portfolio.socials.github && (
+              <a href={portfolio.socials.github} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-xs font-bold uppercase text-amber-600 hover:underline shrink-0 bg-amber-500/10 px-3 py-1.5 rounded-lg border border-amber-600/20">
                 <span>{translations[lang].githubViewAll}</span>
-                <ChevronRight size={14} />
+                <ExternalLink size={13} />
               </a>
             )}
           </div>
 
-          {loadingGithub ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 animate-pulse">
-              <div className="h-16 bg-slate-200 dark:bg-slate-800 rounded-lg"></div>
-              <div className="h-16 bg-slate-200 dark:bg-slate-800 rounded-lg"></div>
+          {/* GitHub Stats Cards Bar */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="p-3 bg-white dark:bg-[#14141C] border border-slate-200 dark:border-slate-800 rounded-xl text-center">
+              <span className="text-[10px] font-mono text-slate-400 block uppercase">{lang === 'ar' ? 'المستودعات العامة' : lang === 'de' ? 'Öffentliche Repos' : 'Public Repos'}</span>
+              <span className="text-lg font-bold text-amber-600 font-mono">{githubUser?.public_repos || 66}</span>
             </div>
-          ) : githubRepos.length > 0 ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {githubRepos.map((repo) => (
-                <a key={repo.id} href={repo.html_url} target="_blank" rel="noopener noreferrer" className="p-4 bg-white dark:bg-[#14141C] rounded-xl border border-slate-200 dark:border-slate-800 hover:border-amber-600/30 transition-all shadow-sm space-y-2 flex flex-col justify-between">
-                  <div>
+            <div className="p-3 bg-white dark:bg-[#14141C] border border-slate-200 dark:border-slate-800 rounded-xl text-center">
+              <span className="text-[10px] font-mono text-slate-400 block uppercase">{lang === 'ar' ? 'المتابعون' : lang === 'de' ? 'Follower' : 'Followers'}</span>
+              <span className="text-lg font-bold text-amber-600 font-mono">{githubUser?.followers || 81}</span>
+            </div>
+            <div className="p-3 bg-white dark:bg-[#14141C] border border-slate-200 dark:border-slate-800 rounded-xl text-center">
+              <span className="text-[10px] font-mono text-slate-400 block uppercase">{lang === 'ar' ? 'النشاط التراكمي' : lang === 'de' ? 'Aktivität' : 'Active Since'}</span>
+              <span className="text-lg font-bold text-amber-600 font-mono">2014</span>
+            </div>
+            <div className="p-3 bg-white dark:bg-[#14141C] border border-slate-200 dark:border-slate-800 rounded-xl text-center">
+              <span className="text-[10px] font-mono text-slate-400 block uppercase">{lang === 'ar' ? 'الموقع' : lang === 'de' ? 'Standort' : 'Location'}</span>
+              <span className="text-sm font-bold text-slate-700 dark:text-zinc-200 truncate block mt-1">{githubUser?.location || 'Germany'}</span>
+            </div>
+          </div>
+
+          {/* Contribution Calendar Heatmap Graph */}
+          <div className="p-4 sm:p-5 bg-white dark:bg-[#14141C] rounded-xl border border-slate-200 dark:border-slate-800 space-y-3 shadow-inner">
+            <div className="flex justify-between items-center text-xs border-b border-slate-100 dark:border-slate-800/80 pb-2">
+              <span className="font-bold text-slate-700 dark:text-zinc-200 flex items-center gap-1.5">
+                <Calendar size={14} className="text-amber-600" />
+                {lang === 'ar' ? 'خارطة مساهمات غيتهوب (الـ 365 يوماً الماضية)' : lang === 'de' ? 'GitHub Beiträge der letzten 365 Tage' : 'Last 1 Year Contributions Heatmap'}
+              </span>
+              <span className="text-[10px] font-mono text-amber-600 bg-amber-500/10 px-2 py-0.5 rounded font-bold">@amr88nzzal</span>
+            </div>
+            <div className="overflow-x-auto py-2 flex justify-center items-center">
+              <img 
+                src="https://ghchart.rshah.org/d97706/amr88nzzal" 
+                alt="Amro Nazzal GitHub Contributions Chart" 
+                className="min-w-[650px] w-full h-auto dark:invert dark:hue-rotate-180 dark:brightness-110 contrast-125"
+              />
+            </div>
+            <div className="flex justify-between items-center text-[10px] text-slate-400 font-mono pt-1">
+              <span>Less</span>
+              <div className="flex items-center gap-1">
+                <span className="w-2.5 h-2.5 rounded-sm bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 inline-block"></span>
+                <span className="w-2.5 h-2.5 rounded-sm bg-amber-200 inline-block"></span>
+                <span className="w-2.5 h-2.5 rounded-sm bg-amber-400 inline-block"></span>
+                <span className="w-2.5 h-2.5 rounded-sm bg-amber-600 inline-block"></span>
+                <span className="w-2.5 h-2.5 rounded-sm bg-amber-800 inline-block"></span>
+              </div>
+              <span>More</span>
+            </div>
+          </div>
+
+          {/* Recent Live Contribution Activity Stream */}
+          {githubEvents.length > 0 && (
+            <div className="space-y-3">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-zinc-400 flex items-center gap-1.5">
+                <RefreshCw size={12} className="text-amber-600" />
+                <span>{lang === 'ar' ? 'أحدث المساهمات والأنشطة البرمجية المباشرة' : lang === 'de' ? 'Neueste GitHub-Aktivitäten & Commits' : 'Recent Live Activity Stream'}</span>
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {githubEvents.slice(0, 4).map((evt: any) => (
+                  <div key={evt.id} className="p-3 bg-white dark:bg-[#14141C] border border-slate-200 dark:border-slate-800 rounded-xl space-y-1 text-xs">
                     <div className="flex justify-between items-center">
-                      <span className="text-xs font-bold text-slate-900 dark:text-white font-mono truncate">{repo.name}</span>
-                      <span className="text-[9px] uppercase font-bold text-amber-600 px-1.5 py-0.5 bg-amber-500/10 rounded font-mono shrink-0">{repo.language || 'Code'}</span>
+                      <span className="font-mono text-[10px] font-bold text-amber-600 truncate">{evt.repo?.name || 'GitHub Repo'}</span>
+                      <span className="text-[9px] font-mono text-slate-400">{new Date(evt.created_at).toLocaleDateString()}</span>
                     </div>
-                    <p className="text-[10px] text-slate-500 dark:text-zinc-400 mt-1 line-clamp-2 text-justify leading-relaxed">{repo.description || 'No description provided.'}</p>
+                    <p className="text-[11px] text-slate-600 dark:text-zinc-300 font-sans line-clamp-1">
+                      {evt.type === 'PushEvent' ? `Pushed commits to ${evt.payload?.ref?.replace('refs/heads/', '') || 'main'}` :
+                       evt.type === 'CreateEvent' ? `Created ${evt.payload?.ref_type || 'repository'}` :
+                       evt.type === 'WatchEvent' ? 'Starred repository' : 'Contributed to codebase'}
+                    </p>
                   </div>
-                  <div className="flex justify-between items-center text-[9px] font-mono text-slate-400 pt-2 border-t border-slate-100 dark:border-slate-800/50">
-                    <span>★ {repo.stargazers_count} stars</span>
-                    <span>Updated {new Date(repo.updated_at).toLocaleDateString()}</span>
-                  </div>
-                </a>
-              ))}
-            </div>
-          ) : (
-            <div className="text-center py-6 text-xs text-slate-400">
-              <AlertCircle size={20} className="mx-auto text-amber-600 mb-1" />
-              <span>Could not load live repos. Visit <a href={portfolio.socials.github} className="underline text-amber-600">Amro's GitHub profile</a> directly.</span>
+                ))}
+              </div>
             </div>
           )}
         </section>
 
-        {/* AI RECRUITER RESUME SYNERGY MATCHER */}
-        <section id="matcher" className="bg-slate-100/80 dark:bg-[#111] p-6 sm:p-8 rounded-2xl border border-slate-200 dark:border-slate-800/80 max-w-4xl mx-auto space-y-6">
-          <div className="text-center space-y-1">
-            <h2 className="text-xl sm:text-2xl font-display font-bold text-amber-600 flex items-center justify-center gap-2">
-              <Sparkles size={18} className="animate-pulse" />
-              <span>{translations[lang].matcherHeader}</span>
-            </h2>
-            <p className="text-xs text-slate-500 dark:text-zinc-400 max-w-xl mx-auto">
-              {translations[lang].matcherSub}
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="space-y-3">
-              <div 
-                onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-                onDragLeave={() => setDragOver(false)}
-                onDrop={(e) => { e.preventDefault(); setDragOver(false); if(e.dataTransfer.files?.[0]) processFileForAnalysis(e.dataTransfer.files[0]); }}
-                className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-colors ${dragOver ? 'border-amber-600 bg-amber-600/5' : 'border-slate-300 dark:border-slate-800 bg-white dark:bg-slate-900/40'}`}>
-                <input type="file" id="cv-uploader-real" onChange={handleFileUpload} accept=".pdf,.doc,.docx,.txt" className="hidden" />
-                <label htmlFor="cv-uploader-real" className="cursor-pointer space-y-1.5 block">
-                  <Upload className="mx-auto text-amber-600" size={28} />
-                  <p className="text-xs font-bold">{translations[lang].matcherDropText}</p>
-                  <p className="text-[10px] text-slate-400">PDF, TXT or Docx. Max 10MB</p>
-                </label>
-                {analysisFileName && (
-                  <span className="mt-2.5 inline-flex items-center gap-1.5 text-[9px] font-mono bg-amber-500/10 text-amber-600 px-2 py-0.5 rounded">
-                    <FileText size={10} /> {analysisFileName}
-                  </span>
-                )}
-              </div>
-
-              <div className="space-y-2">
-                <textarea rows={3} value={pastedBio} onChange={(e) => setPastedBio(e.target.value)} placeholder={translations[lang].matcherPastePlaceholder} className="w-full text-xs p-3 border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 rounded-xl focus:outline-none focus:border-amber-600 resize-none" />
-                <button onClick={handleAnalyzePasted} disabled={isAnalyzing || !pastedBio.trim()} className="w-full bg-[#1A1A1A] dark:bg-amber-600 text-white py-2 text-xs font-bold uppercase tracking-wider rounded-lg disabled:opacity-45">
-                  {isAnalyzing ? translations[lang].matcherAnalyzing : translations[lang].matcherAnalyzeBtn}
-                </button>
-              </div>
+        {/* CONTACT SECTION */}
+        <section id="contact" className="max-w-3xl mx-auto">
+          <div className="bg-white dark:bg-[#14141C] p-6 sm:p-8 rounded-2xl border border-slate-200 dark:border-slate-800/80 shadow-sm space-y-6">
+            <div className="pb-4 border-b border-slate-100 dark:border-slate-800">
+              <h2 className="text-xl sm:text-2xl font-display font-bold text-slate-900 dark:text-white">{translations[lang].contactHeader}</h2>
+              <p className="text-xs text-slate-500 dark:text-zinc-400 mt-1">{translations[lang].contactSub}</p>
             </div>
 
-            <div className="bg-white dark:bg-[#14141C] rounded-xl p-5 border border-slate-200 dark:border-slate-800 flex flex-col justify-center min-h-[250px]">
-              {isAnalyzing ? (
-                <div className="space-y-3 animate-pulse">
-                  <div className="h-3 bg-slate-200 dark:bg-slate-800 rounded w-1/4"></div>
-                  <div className="h-2 bg-slate-200 dark:bg-slate-800 rounded w-full"></div>
-                  <div className="h-2 bg-slate-200 dark:bg-slate-800 rounded w-5/6"></div>
-                  <div className="h-8 bg-slate-200 dark:bg-slate-800 rounded-lg mt-3"></div>
-                </div>
-              ) : analysisResult ? (
-                <div className="space-y-3">
-                  <div className="flex justify-between items-center pb-2 border-b border-slate-100 dark:border-slate-800">
-                    <div>
-                      <span className="text-[9px] font-mono text-amber-600 font-bold uppercase block">AI compatibility match</span>
-                      <p className="text-xs font-bold">{analysisResult.name}</p>
-                    </div>
-                    <div className="text-right">
-                      <span className="text-2xl font-mono font-bold text-amber-600">{analysisResult.matchScore}%</span>
-                    </div>
-                  </div>
-                  <p className="text-[10px] font-bold text-slate-500 uppercase">{analysisResult.title}</p>
-                  <p className="text-xs text-slate-600 dark:text-zinc-300 leading-relaxed text-justify">{analysisResult.summary}</p>
-                  <div className="p-3 bg-amber-500/5 rounded-lg border border-amber-600/10">
-                    <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400 mb-1">{translations[lang].matcherCollaborationFit}</p>
-                    <p className="text-xs text-slate-700 dark:text-zinc-300 leading-relaxed text-justify italic font-serif">"{analysisResult.collaborationMatch}"</p>
-                  </div>
-                </div>
-              ) : (
-                <div className="text-center text-slate-400 space-y-1">
-                  <FileText className="mx-auto text-amber-600" size={32} />
-                  <p className="text-xs font-bold">{translations[lang].matcherDropText}</p>
-                  <p className="text-[9px]">{lang === 'ar' ? 'سيتولى نموذج Gemini تحليل السيرة الذاتية وصياغة تقييم التوافق.' : 'Upload or paste resume parameters to test synergy with Amro.'}</p>
-                </div>
-              )}
-            </div>
-          </div>
-        </section>
-
-        {/* CONTACT SECTION DUAL: Form & QR Business Card */}
-        <section id="contact" className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch max-w-5xl mx-auto">
-          
-          {/* QR Scan Desk Card */}
-          <div className="lg:col-span-4 bg-white dark:bg-[#14141C] p-6 rounded-xl border border-slate-200 dark:border-slate-800/80 flex flex-col justify-between text-center space-y-4 shadow-sm">
-            <div className="space-y-1">
-              <span className="inline-flex items-center gap-1 text-[9px] font-bold uppercase tracking-widest text-amber-600">
-                <Share2 size={12} /> Live Scan
-              </span>
-              <h3 className="text-sm font-bold">{translations[lang].qrContactTitle}</h3>
-              <p className="text-[11px] text-slate-500 leading-relaxed">{translations[lang].qrContactSub}</p>
-            </div>
-
-            {/* Dyn SVG QR representing WhatsApp Direct Call vCard */}
-            <div className="mx-auto p-4 bg-white rounded-xl border border-slate-100 shadow-inner flex items-center justify-center">
-              <svg className="h-32 w-32" viewBox="0 0 100 100" fill="currentColor">
-                {/* Clean QR vector visual pattern representing wa.me/+4915560099668 */}
-                <path d="M5,5 h30 v30 h-30 z M15,15 h10 v10 h-10 z" />
-                <path d="M65,5 h30 v30 h-30 z M75,15 h10 v10 h-10 z" />
-                <path d="M5,65 h30 v30 h-30 z M15,75 h10 v10 h-10 z" />
-                <path d="M45,10 h10 v10 h-10 z M45,30 h10 v10 h-10 z M30,45 h10 v10 h-10 z" />
-                <path d="M10,45 h10 v10 h-10 z M55,45 h10 v10 h-10 z M70,45 h10 v10 h-10 z" />
-                <path d="M45,55 h10 v10 h-10 z M30,65 h10 v10 h-10 z M55,65 h15 v15 h-15 z" />
-                <path d="M45,75 h10 v10 h-10 z M80,65 h15 v15 h-15 z M85,85 h10 v10 h-10 z" />
-                <circle cx="50" cy="50" r="8" className="text-amber-600" />
-              </svg>
-            </div>
-
-            <div className="flex justify-center gap-4 text-xs font-bold pt-2 border-t">
-              <a href={portfolio.socials.whatsapp} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-slate-600 dark:text-zinc-300 hover:text-amber-600">
-                <MessageCircle size={14} /> WhatsApp
+            {/* Direct Social & Quick Connect Buttons */}
+            <div className="flex flex-wrap justify-center sm:justify-start gap-3 p-3 bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-slate-200/60 dark:border-slate-800 text-xs font-bold">
+              <a href={portfolio.socials.whatsapp} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500/10 text-emerald-600 rounded-lg border border-emerald-500/20 hover:bg-emerald-500/20 transition-all">
+                <MessageCircle size={15} /> WhatsApp
               </a>
-              <a href={portfolio.socials.telegram} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-slate-600 dark:text-zinc-300 hover:text-amber-600">
-                <SendHorizontal size={14} /> Telegram
+              <a href={portfolio.socials.telegram} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 px-3 py-1.5 bg-sky-500/10 text-sky-600 rounded-lg border border-sky-500/20 hover:bg-sky-500/20 transition-all">
+                <SendHorizontal size={15} /> Telegram
               </a>
-              <a href={portfolio.socials.twitter} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-slate-600 dark:text-zinc-300 hover:text-amber-600">
-                <Share2 size={14} /> Twitter
+              <a href={`mailto:${portfolio.contact.email}`} className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500/10 text-amber-600 rounded-lg border border-amber-500/20 hover:bg-amber-500/20 transition-all">
+                <Mail size={15} /> {portfolio.contact.email}
+              </a>
+              <a href={`tel:${portfolio.contact.phone}`} className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-200/50 dark:bg-slate-800 text-slate-700 dark:text-zinc-200 rounded-lg border border-slate-300/40 dark:border-slate-700 hover:bg-slate-200 transition-all">
+                <Phone size={15} /> {portfolio.contact.phone}
               </a>
             </div>
-          </div>
 
-          {/* Form Block */}
-          <div className="lg:col-span-8 bg-white dark:bg-[#14141C] p-6 rounded-xl border border-slate-200 dark:border-slate-800/80 shadow-sm flex flex-col justify-between">
-            <div className="pb-3 border-b border-slate-100 dark:border-slate-800">
-              <h2 className="text-lg font-bold">{translations[lang].contactHeader}</h2>
-              <p className="text-[11px] text-slate-500">{translations[lang].contactSub}</p>
-            </div>
-
-            <form onSubmit={handleContactSubmit} className="space-y-4 pt-4">
+            <form onSubmit={handleContactSubmit} className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <label className="text-[9px] font-bold uppercase tracking-wider text-slate-400">{translations[lang].formName}</label>
-                  <input type="text" required value={contactForm.name} onChange={(e) => setContactForm({...contactForm, name: e.target.value})} placeholder="Dr. Michael Weber" className="w-full text-xs p-2.5 border rounded-lg bg-slate-50 dark:bg-slate-900 focus:outline-none focus:border-amber-600" />
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{translations[lang].formName}</label>
+                  <input type="text" required value={contactForm.name} onChange={(e) => setContactForm({...contactForm, name: e.target.value})} placeholder="Dr. Michael Weber" className="w-full text-xs p-3 border rounded-xl bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 focus:outline-none focus:border-amber-600" />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[9px] font-bold uppercase tracking-wider text-slate-400">{translations[lang].formEmail}</label>
-                  <input type="email" required value={contactForm.email} onChange={(e) => setContactForm({...contactForm, email: e.target.value})} placeholder="m.weber@fintech.de" className="w-full text-xs p-2.5 border rounded-lg bg-slate-50 dark:bg-slate-900 focus:outline-none focus:border-amber-600" />
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{translations[lang].formEmail}</label>
+                  <input type="email" required value={contactForm.email} onChange={(e) => setContactForm({...contactForm, email: e.target.value})} placeholder="m.weber@fintech.de" className="w-full text-xs p-3 border rounded-xl bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 focus:outline-none focus:border-amber-600" />
                 </div>
               </div>
               <div className="space-y-1">
-                <label className="text-[9px] font-bold uppercase tracking-wider text-slate-400">{translations[lang].formSubject}</label>
-                <input type="text" value={contactForm.subject} onChange={(e) => setContactForm({...contactForm, subject: e.target.value})} placeholder="e.g. Collaboration on POS ledgers" className="w-full text-xs p-2.5 border rounded-lg bg-slate-50 dark:bg-slate-900 focus:outline-none focus:border-amber-600" />
+                <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{translations[lang].formSubject}</label>
+                <input type="text" value={contactForm.subject} onChange={(e) => setContactForm({...contactForm, subject: e.target.value})} placeholder="e.g. Collaboration on POS ledgers" className="w-full text-xs p-3 border rounded-xl bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 focus:outline-none focus:border-amber-600" />
               </div>
               <div className="space-y-1">
-                <label className="text-[9px] font-bold uppercase tracking-wider text-slate-400">{translations[lang].formMessage}</label>
-                <textarea rows={3} required value={contactForm.message} onChange={(e) => setContactForm({...contactForm, message: e.target.value})} placeholder="Draft your query here..." className="w-full text-xs p-2.5 border rounded-lg bg-slate-50 dark:bg-slate-900 focus:outline-none focus:border-amber-600 resize-none" />
+                <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{translations[lang].formMessage}</label>
+                <textarea rows={4} required value={contactForm.message} onChange={(e) => setContactForm({...contactForm, message: e.target.value})} placeholder="Write your proposal or query here..." className="w-full text-xs p-3 border rounded-xl bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 focus:outline-none focus:border-amber-600 resize-none" />
               </div>
-              <button type="submit" disabled={isSendingMessage} className="w-full bg-[#1A1A1A] dark:bg-amber-600 text-white py-2.5 text-xs font-bold uppercase tracking-wider rounded-lg hover:opacity-90 transition-opacity">
-                {isSendingMessage ? translations[lang].formSending : translations[lang].formSend}
+
+              <button type="submit" disabled={isSendingMessage} className="w-full bg-[#1A1A1A] hover:bg-black dark:bg-amber-600 dark:hover:bg-amber-700 text-white py-3 text-xs font-bold uppercase tracking-wider rounded-xl transition-all shadow-md flex items-center justify-center gap-2 disabled:opacity-50">
+                {isSendingMessage ? (
+                  <>
+                    <RefreshCw size={14} className="animate-spin" />
+                    <span>{translations[lang].formSending}</span>
+                  </>
+                ) : (
+                  <>
+                    <Send size={14} />
+                    <span>{translations[lang].formSend}</span>
+                  </>
+                )}
               </button>
             </form>
+
+            {/* Instant Auto-Response Notification Block */}
+            {showAutoReply && lastSubmittedMessage && (
+              <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-xl space-y-2 animate-in fade-in">
+                <div className="flex items-center gap-2 text-emerald-600 font-bold text-xs">
+                  <ShieldCheck size={16} />
+                  <span>{translations[lang].instantResponseTitle}</span>
+                </div>
+                <p className="text-xs text-slate-700 dark:text-zinc-300 leading-relaxed text-justify">
+                  {translations[lang].instantResponseText
+                    .replace('{name}', lastSubmittedMessage.name)
+                    .replace('{subject}', lastSubmittedMessage.subject || 'General Inquiry')
+                    .replace('{email}', lastSubmittedMessage.email)}
+                </p>
+              </div>
+            )}
           </div>
         </section>
 
