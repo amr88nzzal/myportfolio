@@ -327,7 +327,6 @@ export default function App() {
 
   // Custom Image Upload State
   const [customPortrait, setCustomPortrait] = useState<string>('');
-  const [customOffice, setCustomOffice] = useState<string>('');
   const [isUploadingImage, setIsUploadingImage] = useState<boolean>(false);
 
   // Dynamic OTP state
@@ -343,11 +342,13 @@ export default function App() {
     setIsAdminUnlocked(false);
     setAdminToken('');
   };
+  // Pick the text for the current language (used by the admin panel messages)
+  const tr3 = (en: string, ar: string, de: string) => (lang === 'ar' ? ar : lang === 'de' ? de : en);
+  const [integrationsStatus, setIntegrationsStatus] = useState<{ telegram: boolean; email: boolean } | null>(null);
 
   // Sync local image states when portfolio updates
   useEffect(() => {
     if (portfolio.portraitImage) setCustomPortrait(portfolio.portraitImage);
-    if (portfolio.officeImage) setCustomOffice(portfolio.officeImage);
   }, [portfolio]);
 
   // Persistent Hydration (Server First, fallback to LocalStorage)
@@ -407,7 +408,7 @@ export default function App() {
     const headers = { Authorization: `Bearer ${adminToken}` };
     fetch('/api/portfolio', { headers })
       .then((r) => (r.ok ? r.json() : null))
-      .then((d) => { if (d && d.name) setPortfolio(d); })
+      .then((d) => { if (d && d.name && d.dataVersion === initialPortfolioData.dataVersion) setPortfolio(d); })
       .catch(() => {});
     fetch('/api/messages', { headers })
       .then((r) => (r.ok ? r.json() : []))
@@ -453,28 +454,71 @@ export default function App() {
     fetchGithub();
   }, [portfolio.socials.github]);
 
-  const savePortfolioToLocal = (updatedData: PortfolioData) => {
-    setPortfolio(updatedData);
-    localStorage.setItem('amro_portfolio', JSON.stringify(updatedData));
-    // Persist to server disk for cross-browser / cross-device availability (admin only)
-    if (!adminToken) return;
-    fetch('/api/portfolio', {
-      method: 'POST',
-      headers: authJsonHeaders(),
-      body: JSON.stringify(updatedData)
-    }).catch(err => console.error('Failed to sync portfolio to server:', err));
+  // Authenticated API call; an expired admin session is handled in one place
+  const adminFetch = async (url: string, init: RequestInit = {}) => {
+    const res = await fetch(url, {
+      ...init,
+      headers: { ...authJsonHeaders(), ...((init.headers as Record<string, string>) || {}) }
+    });
+    if (res.status === 401) {
+      lockAdmin();
+      window.alert(tr3('Admin session expired. Please sign in again.', 'انتهت جلسة الإدارة. سجّل الدخول مرة أخرى.', 'Admin-Sitzung abgelaufen. Bitte erneut anmelden.'));
+    }
+    return res;
   };
 
-  const saveMessagesToLocal = (updatedMsgs: ContactMessage[]) => {
-    setMessages(updatedMsgs);
-    // Persist messages to server disk (admin only)
-    if (!adminToken) return;
-    fetch('/api/messages', {
-      method: 'POST',
-      headers: authJsonHeaders(),
-      body: JSON.stringify(updatedMsgs)
-    }).catch(err => console.error('Failed to sync messages to server:', err));
+  // Updates the page immediately, then saves on the server; returns true only when the server confirmed
+  const savePortfolioToLocal = async (updatedData: PortfolioData): Promise<boolean> => {
+    setPortfolio(updatedData);
+    try {
+      localStorage.setItem('amro_portfolio', JSON.stringify({ ...updatedData, integrations: { ...updatedData.integrations, telegramBotToken: '', telegramChatId: '' } }));
+    } catch { /* storage may be unavailable */ }
+    if (!adminToken) return false;
+    try {
+      const res = await adminFetch('/api/portfolio', { method: 'POST', body: JSON.stringify(updatedData) });
+      if (res.status === 401) return false;
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return true;
+    } catch (err) {
+      console.error('Failed to save portfolio:', err);
+      window.alert(tr3('Could not save to the server. Your change is only visible in this browser.', 'تعذر الحفظ على الخادم. التعديل ظاهر في هذا المتصفح فقط.', 'Speichern auf dem Server fehlgeschlagen. Die Änderung ist nur in diesem Browser sichtbar.'));
+      return false;
+    }
   };
+
+  // Inbox: always re-read from the server; single-message actions never overwrite newer messages
+  const loadMessages = async () => {
+    if (!adminToken) return;
+    try {
+      const res = await adminFetch('/api/messages');
+      if (res.ok) {
+        const d = await res.json();
+        if (Array.isArray(d)) setMessages(d);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+  const markMessageRead = async (id: string) => {
+    const res = await adminFetch(`/api/messages/${encodeURIComponent(id)}/read`, { method: 'PATCH' });
+    if (res.ok) loadMessages();
+  };
+  const deleteMessage = async (id: string) => {
+    if (!window.confirm(tr3('Delete message?', 'حذف الرسالة؟', 'Nachricht löschen?'))) return;
+    const res = await adminFetch(`/api/messages/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    if (res.ok) loadMessages();
+  };
+
+  useEffect(() => {
+    if (!adminToken || !showAdminPanel) return;
+    if (adminTab === 'inbox') loadMessages();
+    if (adminTab === 'integrations') {
+      adminFetch('/api/integrations-status')
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => { if (d) setIntegrationsStatus(d); })
+        .catch(() => {});
+    }
+  }, [adminTab, adminToken, showAdminPanel]);
 
   const textDirection = lang === 'ar' ? 'rtl' : 'ltr';
 
@@ -645,89 +689,126 @@ export default function App() {
     }
   };
 
-  const handleResetToDefault = () => {
-    if (window.confirm(lang === 'ar' ? 'هل أنت متأكد من استعادة البيانات الافتراضية؟' : 'Are you sure?')) {
-      savePortfolioToLocal(initialPortfolioData);
-      saveMessagesToLocal(initialMessages);
-      fetch('/api/reset-portfolio', { method: 'POST', headers: authJsonHeaders() }).catch(err => console.error(err));
-      lockAdmin();
-      setShowAdminPanel(false);
-      setAdminCode('');
+  const handleResetToDefault = async () => {
+    if (!window.confirm(tr3('Restore the default CV content? Your messages are kept.', 'استعادة المحتوى الافتراضي للسيرة؟ رسائلك لن تُحذف.', 'Standard-Inhalt wiederherstellen? Ihre Nachrichten bleiben erhalten.'))) return;
+    const res = await adminFetch('/api/reset-portfolio', { method: 'POST' });
+    if (!res.ok) return;
+    try { localStorage.removeItem('amro_portfolio'); } catch { /* ignore */ }
+    setPortfolio(initialPortfolioData);
+    setCustomPortrait(initialPortfolioData.portraitImage);
+    lockAdmin();
+    setShowAdminPanel(false);
+    setAdminCode('');
+  };
+
+  // Shrinks big phone photos before upload (max 1400px, JPEG) so they always fit the server limit
+  const resizeImageToDataUrl = (file: File, maxDim = 1400, quality = 0.86): Promise<string> =>
+    new Promise((resolve, reject) => {
+      const objectUrl = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => {
+        const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+        const w = Math.max(1, Math.round(img.width * scale));
+        const h = Math.max(1, Math.round(img.height * scale));
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) { URL.revokeObjectURL(objectUrl); reject(new Error('Canvas unavailable')); return; }
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, w, h);
+        ctx.drawImage(img, 0, 0, w, h);
+        URL.revokeObjectURL(objectUrl);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      img.onerror = () => { URL.revokeObjectURL(objectUrl); reject(new Error('Not a valid image file')); };
+      img.src = objectUrl;
+    });
+
+  // Uploads one image and returns its public URL (or null after showing an error)
+  const uploadImageFile = async (file: File): Promise<string | null> => {
+    if (!file.type.startsWith('image/')) {
+      window.alert(tr3('Please choose an image file.', 'الرجاء اختيار ملف صورة.', 'Bitte eine Bilddatei wählen.'));
+      return null;
+    }
+    setIsUploadingImage(true);
+    try {
+      const base64Data = await resizeImageToDataUrl(file);
+      const res = await adminFetch('/api/upload-image', { method: 'POST', body: JSON.stringify({ base64Data, fileName: file.name }) });
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 401) return null;
+      if (!res.ok || !data.imageUrl) throw new Error(data.error || `HTTP ${res.status}`);
+      return data.imageUrl as string;
+    } catch (err: any) {
+      window.alert(`${tr3('Upload failed', 'فشل رفع الصورة', 'Upload fehlgeschlagen')}: ${err.message}`);
+      return null;
+    } finally {
+      setIsUploadingImage(false);
     }
   };
 
-  const handleImageUploadFromDevice = async (e: React.ChangeEvent<HTMLInputElement>, targetField: 'portrait' | 'office') => {
+  const handlePortraitPick = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    e.target.value = '';
     if (!file) return;
-    setIsUploadingImage(true);
-
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      const base64Data = event.target?.result as string;
-      if (!base64Data) return;
-
-      try {
-        const res = await fetch('/api/upload-image', {
-          method: 'POST',
-          headers: authJsonHeaders(),
-          body: JSON.stringify({ base64Data, fileName: file.name })
-        });
-        const data = await res.json();
-        if (data.success && data.imageUrl) {
-          if (targetField === 'portrait') setCustomPortrait(data.imageUrl);
-          else setCustomOffice(data.imageUrl);
-        } else {
-          if (targetField === 'portrait') setCustomPortrait(base64Data);
-          else setCustomOffice(base64Data);
-        }
-      } catch (err) {
-        console.error('Upload error:', err);
-        if (targetField === 'portrait') setCustomPortrait(base64Data);
-        else setCustomOffice(base64Data);
-      } finally {
-        setIsUploadingImage(false);
-      }
-    };
-    reader.readAsDataURL(file);
+    const url = await uploadImageFile(file);
+    if (url) setCustomPortrait(url);
   };
 
-  const handleUpdateProfile = (e: React.FormEvent) => {
+  const handleUpdateProfile = async (e: React.FormEvent) => {
     e.preventDefault();
-    const formData = new FormData(e.currentTarget as HTMLFormElement);
+    const f = new FormData(e.currentTarget as HTMLFormElement);
+    const val = (k: string) => String(f.get(k) ?? '').trim();
+
+    if (!val('profile_name')) {
+      window.alert(tr3('The name cannot be empty.', 'الاسم مطلوب.', 'Der Name darf nicht leer sein.'));
+      return;
+    }
+    if (val('email') && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val('email'))) {
+      window.alert(tr3('Please enter a valid e-mail address.', 'الرجاء إدخال بريد إلكتروني صحيح.', 'Bitte eine gültige E-Mail-Adresse eingeben.'));
+      return;
+    }
+    for (const key of ['github', 'telegram', 'whatsapp', 'twitter', 'linkedin']) {
+      if (val(key) && !/^https?:\/\//i.test(val(key))) {
+        window.alert(tr3(`The ${key} link must start with https://`, `رابط ${key} يجب أن يبدأ بـ https://`, `Der ${key}-Link muss mit https:// beginnen`));
+        return;
+      }
+    }
+
     const updated: PortfolioData = {
       ...portfolio,
-      name: formData.get('profile_name') as string || portfolio.name,
-      portraitImage: customPortrait || (formData.get('portrait_image') as string) || portfolio.portraitImage,
-      officeImage: customOffice || (formData.get('office_image') as string) || portfolio.officeImage,
+      name: val('profile_name'),
+      portraitImage: customPortrait || portfolio.portraitImage,
       title: {
-        en: formData.get('title_en') as string || portfolio.title.en,
-        ar: formData.get('title_ar') as string || portfolio.title.ar,
-        de: formData.get('title_de') as string || portfolio.title.de,
+        en: val('title_en') || portfolio.title.en,
+        ar: val('title_ar') || portfolio.title.ar,
+        de: val('title_de') || portfolio.title.de,
       },
       summary: {
-        en: formData.get('summary_en') as string || portfolio.summary.en,
-        ar: formData.get('summary_ar') as string || portfolio.summary.ar,
-        de: formData.get('summary_de') as string || portfolio.summary.de,
+        en: val('summary_en') || portfolio.summary.en,
+        ar: val('summary_ar') || portfolio.summary.ar,
+        de: val('summary_de') || portfolio.summary.de,
       },
       contact: {
-        email: formData.get('email') as string || portfolio.contact.email,
-        phone: formData.get('phone') as string || portfolio.contact.phone,
+        email: val('email') || portfolio.contact.email,
+        phone: val('phone'),
         location: {
-          en: formData.get('loc_en') as string || portfolio.contact.location.en,
-          ar: formData.get('loc_ar') as string || portfolio.contact.location.ar,
-          de: formData.get('loc_de') as string || portfolio.contact.location.de,
+          en: val('loc_en') || portfolio.contact.location.en,
+          ar: val('loc_ar') || portfolio.contact.location.ar,
+          de: val('loc_de') || portfolio.contact.location.de,
         }
       },
+      // optional links may be cleared; empty links are simply not shown on the site
       socials: {
-        github: formData.get('github') as string || portfolio.socials.github,
-        telegram: formData.get('telegram') as string || portfolio.socials.telegram,
-        whatsapp: formData.get('whatsapp') as string || portfolio.socials.whatsapp,
-        twitter: formData.get('twitter') as string || portfolio.socials.twitter,
-        linkedin: formData.get('linkedin') as string || portfolio.socials.linkedin,
+        github: val('github'),
+        telegram: val('telegram'),
+        whatsapp: val('whatsapp'),
+        twitter: val('twitter'),
+        linkedin: val('linkedin'),
       }
     };
-    savePortfolioToLocal(updated);
-    alert(lang === 'ar' ? 'تم حفظ التعديلات والصورة الشخصية بنجاح!' : 'Settings and profile photo saved successfully!');
+    const ok = await savePortfolioToLocal(updated);
+    if (ok) window.alert(tr3('Saved. The changes are live.', 'تم الحفظ. التعديلات ظاهرة الآن في الموقع.', 'Gespeichert. Die Änderungen sind live.'));
   };
 
   const handleSaveExperience = (e: React.FormEvent) => {
@@ -801,39 +882,53 @@ export default function App() {
     setEditingSkillCat(null);
   };
 
-  const handleUpdateIntegrations = (e: React.FormEvent) => {
+  const handleUpdateIntegrations = async (e: React.FormEvent) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget as HTMLFormElement);
     const updated: PortfolioData = {
       ...portfolio,
       integrations: {
         telegramEnabled: formData.get('telegram_enabled') === 'on',
-        telegramBotToken: formData.get('telegram_token') as string || '',
-        telegramChatId: formData.get('telegram_chatid') as string || '',
+        telegramBotToken: '',
+        telegramChatId: '',
         emailEnabled: formData.get('email_enabled') === 'on',
-        emailAlertAddress: formData.get('email_address') as string || '',
+        emailAlertAddress: String(formData.get('email_address') ?? '').trim(),
         visitAlertsEnabled: formData.get('visit_alerts') === 'on',
       }
     };
-    savePortfolioToLocal(updated);
-    alert('Integrations saved!');
+    const ok = await savePortfolioToLocal(updated);
+    if (ok) window.alert(tr3('Integrations saved.', 'تم حفظ إعدادات التنبيهات.', 'Integrationen gespeichert.'));
   };
 
   const triggerTestTelegram = async () => {
-    const text = `⚡️ <b>Test Notification from Amro Nazzal Portfolio</b>\nYour Telegram integration works flawlessly!`;
     try {
-      await fetch('/api/notify-telegram', {
+      const res = await adminFetch('/api/notify-telegram', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: '⚡️ <b>Test</b> from the Amro Nazzal portfolio: Telegram works.' })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 401) return;
+      window.alert(res.ok ? tr3('Test message sent. Check Telegram.', 'تم إرسال رسالة اختبار. تحقق من تيليغرام.', 'Testnachricht gesendet. Bitte Telegram prüfen.') : (data.error || `HTTP ${res.status}`));
+    } catch (err: any) {
+      window.alert(`${tr3('Test failed', 'فشل الاختبار', 'Test fehlgeschlagen')}: ${err.message}`);
+    }
+  };
+
+  const triggerTestEmail = async () => {
+    try {
+      const res = await adminFetch('/api/notify-email', {
+        method: 'POST',
         body: JSON.stringify({
-          botToken: portfolio.integrations.telegramBotToken,
-          chatId: portfolio.integrations.telegramChatId,
-          message: text
+          to: portfolio.integrations.emailAlertAddress || undefined,
+          subject: 'Portfolio test e-mail',
+          body: 'This is a test message from your portfolio admin panel.'
         })
       });
-      alert('Test alert dispatched! Check Telegram Chat.');
-    } catch (e: any) {
-      alert(`Test failed: ${e.message}`);
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 401) return;
+      window.alert(res.ok ? (data.description || 'OK') : (data.error || `HTTP ${res.status}`));
+    } catch (err: any) {
+      window.alert(`${tr3('Test failed', 'فشل الاختبار', 'Test fehlgeschlagen')}: ${err.message}`);
     }
   };
 
@@ -1211,70 +1306,34 @@ export default function App() {
                         <label className="block text-[10px] uppercase text-slate-400 font-bold mb-1">Phone</label>
                         <input type="text" name="phone" defaultValue={portfolio.contact.phone} className="w-full text-xs px-3 py-2 border rounded dark:bg-slate-900 dark:border-slate-700" />
                       </div>
-                      {/* Avatar Portrait Upload Section */}
-                      <div className="p-3 bg-slate-50 dark:bg-slate-900/80 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2">
-                        <label className="block text-[10px] uppercase text-amber-600 font-bold">
-                          {lang === 'ar' ? 'الصورة الشخصية (Portrait Photo)' : 'Avatar Portrait Image'}
+                      {/* Profile photo: upload, preview, replace, restore */}
+                      <div className="p-3 bg-slate-50 dark:bg-slate-900/80 rounded-xl border border-slate-200 dark:border-slate-800 space-y-3">
+                        <label className="block text-xs uppercase text-amber-600 font-bold">
+                          {tr3('Profile photo', 'الصورة الشخصية', 'Profilfoto')}
                         </label>
-                        <div className="flex items-center gap-3">
-                          <img 
-                            src={customPortrait || portfolio.portraitImage} 
-                            alt="Portrait Preview" 
-                            className="w-14 h-14 rounded-full object-cover border-2 border-amber-600 shadow-sm shrink-0" 
+                        <div className="flex items-start gap-3">
+                          <img
+                            src={customPortrait || portfolio.portraitImage}
+                            alt=""
+                            className="w-24 aspect-[4/5] rounded-lg object-cover object-top border-2 border-amber-600 shadow-sm shrink-0 bg-white"
                           />
-                          <div className="flex-1 space-y-1.5">
-                            <label className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold cursor-pointer transition-colors shadow-sm">
-                              <Upload size={13} />
-                              <span>{isUploadingImage ? (lang === 'ar' ? 'جاري الرفع...' : 'Uploading...') : (lang === 'ar' ? 'رفع صورة من الجهاز' : 'Upload from Device')}</span>
-                              <input 
-                                type="file" 
-                                accept="image/*" 
-                                className="hidden" 
-                                onChange={(e) => handleImageUploadFromDevice(e, 'portrait')} 
-                              />
+                          <div className="flex-1 min-w-0 space-y-2">
+                            <label className={`inline-flex items-center gap-1.5 px-4 min-h-[44px] bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold cursor-pointer transition-colors shadow-sm ${isUploadingImage ? 'opacity-60 pointer-events-none' : ''}`}>
+                              <Upload size={14} />
+                              <span>{isUploadingImage ? tr3('Uploading...', 'جاري الرفع...', 'Wird hochgeladen...') : tr3('Choose new photo', 'اختيار صورة جديدة', 'Neues Foto wählen')}</span>
+                              <input type="file" accept="image/png,image/jpeg,image/webp" className="hidden" disabled={isUploadingImage} onChange={handlePortraitPick} />
                             </label>
-                            <input 
-                              type="text" 
-                              name="portrait_image" 
-                              value={customPortrait} 
-                              onChange={(e) => setCustomPortrait(e.target.value)} 
-                              placeholder="or enter Image URL..." 
-                              className="w-full text-xs px-2.5 py-1 border rounded dark:bg-slate-900 dark:border-slate-700 font-mono text-[10px]" 
-                            />
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Office Image Upload Section */}
-                      <div className="p-3 bg-slate-50 dark:bg-slate-900/80 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2">
-                        <label className="block text-[10px] uppercase text-amber-600 font-bold">
-                          {lang === 'ar' ? 'صورة خلفية المكتب (Office Background)' : 'Office Background Image'}
-                        </label>
-                        <div className="flex items-center gap-3">
-                          <img 
-                            src={customOffice || portfolio.officeImage} 
-                            alt="Office Preview" 
-                            className="w-14 h-14 rounded-lg object-cover border border-slate-300 dark:border-slate-700 shadow-sm shrink-0" 
-                          />
-                          <div className="flex-1 space-y-1.5">
-                            <label className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-700 hover:bg-slate-800 text-white rounded-lg text-xs font-bold cursor-pointer transition-colors shadow-sm">
-                              <Upload size={13} />
-                              <span>{lang === 'ar' ? 'رفع صورة خلفية' : 'Upload Background'}</span>
-                              <input 
-                                type="file" 
-                                accept="image/*" 
-                                className="hidden" 
-                                onChange={(e) => handleImageUploadFromDevice(e, 'office')} 
-                              />
-                            </label>
-                            <input 
-                              type="text" 
-                              name="office_image" 
-                              value={customOffice} 
-                              onChange={(e) => setCustomOffice(e.target.value)} 
-                              placeholder="or enter Image URL..." 
-                              className="w-full text-xs px-2.5 py-1 border rounded dark:bg-slate-900 dark:border-slate-700 font-mono text-[10px]" 
-                            />
+                            {customPortrait && customPortrait !== portfolio.portraitImage && (
+                              <p className="text-xs text-amber-600 font-bold">
+                                {tr3('New photo ready. Press "Save Info" to publish it.', 'الصورة الجديدة جاهزة. اضغط «حفظ» لنشرها.', 'Neues Foto bereit. Zum Veröffentlichen „Speichern“ drücken.')}
+                              </p>
+                            )}
+                            <p className="text-[11px] text-slate-500">
+                              {tr3('JPG, PNG or WEBP. Large photos are resized automatically. Best: portrait, face centered.', 'JPG أو PNG أو WEBP. تُصغَّر الصور الكبيرة تلقائياً. الأفضل: صورة عمودية والوجه في المنتصف.', 'JPG, PNG oder WEBP. Große Fotos werden automatisch verkleinert. Am besten: Hochformat, Gesicht zentriert.')}
+                            </p>
+                            <button type="button" onClick={() => setCustomPortrait(initialPortfolioData.portraitImage)} className="text-xs underline text-slate-500 hover:text-amber-600 min-h-[32px]">
+                              {tr3('Restore default photo', 'استعادة الصورة الافتراضية', 'Standardfoto wiederherstellen')}
+                            </button>
                           </div>
                         </div>
                       </div>
@@ -1319,8 +1378,21 @@ export default function App() {
                       </div>
                     </div>
 
+                    <div className="col-span-1 md:col-span-2 grid grid-cols-1 gap-3 border-t pt-3">
+                      <p className="text-xs font-bold uppercase text-amber-600">{tr3('Profile summary', 'النبذة التعريفية', 'Kurzprofil')}</p>
+                      <textarea name="summary_en" defaultValue={portfolio.summary.en} rows={4} placeholder="Summary (EN)" className="w-full text-sm p-2 border rounded dark:bg-slate-900 dark:border-slate-700" />
+                      <textarea name="summary_ar" defaultValue={portfolio.summary.ar} rows={4} dir="rtl" placeholder="النبذة (AR)" className="w-full text-sm p-2 border rounded dark:bg-slate-900 dark:border-slate-700 font-arabic" />
+                      <textarea name="summary_de" defaultValue={portfolio.summary.de} rows={4} placeholder="Kurzprofil (DE)" className="w-full text-sm p-2 border rounded dark:bg-slate-900 dark:border-slate-700" />
+                    </div>
+
+                    <div className="col-span-1 md:col-span-2 grid grid-cols-1 md:grid-cols-3 gap-3 border-t pt-3">
+                      <input type="text" name="loc_en" defaultValue={portfolio.contact.location.en} placeholder="Location (EN)" className="w-full text-xs px-3 py-2 border rounded dark:bg-slate-900 dark:border-slate-700" />
+                      <input type="text" name="loc_ar" defaultValue={portfolio.contact.location.ar} dir="rtl" placeholder="الموقع (AR)" className="w-full text-xs px-3 py-2 border rounded dark:bg-slate-900 dark:border-slate-700 font-arabic" />
+                      <input type="text" name="loc_de" defaultValue={portfolio.contact.location.de} placeholder="Standort (DE)" className="w-full text-xs px-3 py-2 border rounded dark:bg-slate-900 dark:border-slate-700" />
+                    </div>
+
                     <div className="col-span-1 md:col-span-2 flex justify-end pt-2">
-                      <button type="submit" className="bg-amber-600 text-white px-6 py-2 rounded-lg text-xs font-bold uppercase hover:opacity-90 transition-opacity">
+                      <button type="submit" className="bg-amber-600 text-white px-6 min-h-[44px] rounded-lg text-xs font-bold uppercase hover:opacity-90 transition-opacity">
                         Save Info
                       </button>
                     </div>
@@ -1419,7 +1491,22 @@ export default function App() {
                     {editingProj && (
                       <form onSubmit={handleSaveProject} className="bg-white dark:bg-[#181822] p-5 rounded-xl border-2 border-amber-600/30 space-y-3 shadow-md">
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                          <input type="text" placeholder="Image URL" value={editingProj.image} onChange={(e) => setEditingProj({...editingProj, image: e.target.value})} className="text-xs p-2 border rounded dark:bg-slate-900 dark:border-slate-700 text-[10px] font-mono" />
+                          <div className="flex flex-col gap-1.5 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <img src={editingProj.image} alt="" className="h-10 w-14 rounded object-cover border shrink-0 bg-slate-100" />
+                              <label className={`inline-flex items-center gap-1 px-3 min-h-[40px] bg-amber-600 text-white rounded text-xs font-bold cursor-pointer ${isUploadingImage ? 'opacity-60 pointer-events-none' : ''}`}>
+                                <Upload size={13} /> {isUploadingImage ? tr3('Uploading...', 'جاري الرفع...', 'Wird hochgeladen...') : tr3('Upload image', 'رفع صورة', 'Bild hochladen')}
+                                <input type="file" accept="image/png,image/jpeg,image/webp" className="hidden" disabled={isUploadingImage} onChange={async (e) => {
+                                  const file = e.target.files?.[0];
+                                  e.target.value = '';
+                                  if (!file) return;
+                                  const url = await uploadImageFile(file);
+                                  if (url) setEditingProj((prev) => (prev ? { ...prev, image: url } : prev));
+                                }} />
+                              </label>
+                            </div>
+                            <input type="text" placeholder="Image URL" value={editingProj.image} onChange={(e) => setEditingProj({...editingProj, image: e.target.value})} className="text-xs p-2 border rounded dark:bg-slate-900 dark:border-slate-700 text-[10px] font-mono" />
+                          </div>
                           <input type="text" placeholder="System/Website Link (e.g., https://afaq.amrodev.com)" value={editingProj.link} onChange={(e) => setEditingProj({...editingProj, link: e.target.value})} className="text-xs p-2 border rounded dark:bg-slate-900 dark:border-slate-700 text-[10px] font-mono" />
                           <input type="text" placeholder="Tech Stack (comma separated)" value={editingProj.tech.join(', ')} onChange={(e) => setEditingProj({...editingProj, tech: e.target.value.split(',').map(x => x.trim())})} className="text-xs p-2 border rounded dark:bg-slate-900 dark:border-slate-700" />
                         </div>
@@ -1609,55 +1696,58 @@ export default function App() {
                 {/* Tab: INTEGRATIONS */}
                 {adminTab === 'integrations' && (
                   <form onSubmit={handleUpdateIntegrations} className="space-y-4 bg-white dark:bg-[#181822] p-6 rounded-xl border border-slate-200 dark:border-slate-800/60">
+                    <p className="text-xs text-slate-500 dark:text-zinc-400 leading-relaxed">
+                      {tr3('Bot token, chat ID and mail login are kept on the server in the .env file (never in the browser). Here you only switch alerts on or off.', 'توكن البوت ومعرّف المحادثة وبيانات البريد محفوظة على الخادم في ملف .env (وليس في المتصفح). هنا فقط تفعّل التنبيهات أو توقفها.', 'Bot-Token, Chat-ID und Mail-Zugang liegen auf dem Server in der .env-Datei (nie im Browser). Hier schalten Sie Benachrichtigungen nur ein oder aus.')}
+                    </p>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       <div className="space-y-3">
-                        <div className="flex items-center justify-between border-b pb-1.5">
-                          <p className="text-xs font-bold uppercase text-amber-600">Telegram Bot Integration</p>
-                          <input type="checkbox" name="telegram_enabled" defaultChecked={portfolio.integrations.telegramEnabled} className="h-4 w-4 accent-amber-600" />
-                        </div>
-                        <div>
-                          <label className="block text-[10px] uppercase text-slate-400 font-bold mb-1">Telegram Bot Token (from @BotFather)</label>
-                          <input type="password" name="telegram_token" defaultValue={portfolio.integrations.telegramBotToken} className="w-full text-xs px-3 py-2 border rounded dark:bg-slate-900 dark:border-slate-700 font-mono text-[10px]" />
-                        </div>
-                        <div>
-                          <label className="block text-[10px] uppercase text-slate-400 font-bold mb-1">Telegram Chat ID (your unique account Chat ID)</label>
-                          <input type="text" name="telegram_chatid" defaultValue={portfolio.integrations.telegramChatId} className="w-full text-xs px-3 py-2 border rounded dark:bg-slate-900 dark:border-slate-700 font-mono text-[10px]" />
-                        </div>
-                        <div className="flex items-center justify-between pt-1">
-                          <span className="text-[10px] text-slate-500">Enable Session/Visit Telegram Alerts?</span>
-                          <input type="checkbox" name="visit_alerts" defaultChecked={portfolio.integrations.visitAlertsEnabled} className="h-3.5 w-3.5 accent-amber-600" />
-                        </div>
-                        {portfolio.integrations.telegramBotToken && portfolio.integrations.telegramChatId && (
-                          <button type="button" onClick={triggerTestTelegram} className="text-[10px] bg-sky-600/10 text-sky-500 font-bold border border-sky-500/20 px-3 py-1.5 rounded hover:bg-sky-600/20 transition-colors uppercase">
-                            Send Test Telegram Message
+                        <p className="text-xs font-bold uppercase text-amber-600 border-b pb-1.5">Telegram</p>
+                        <label className="flex items-center justify-between gap-3 text-xs min-h-[40px]">
+                          <span>{tr3('Send contact-form messages to Telegram', 'إرسال رسائل نموذج التواصل إلى تيليغرام', 'Kontaktnachrichten an Telegram senden')}</span>
+                          <input type="checkbox" name="telegram_enabled" defaultChecked={portfolio.integrations.telegramEnabled} className="h-5 w-5 accent-amber-600 shrink-0" />
+                        </label>
+                        <label className="flex items-center justify-between gap-3 text-xs min-h-[40px]">
+                          <span>{tr3('Alert me about new site visits (max. once per hour per visitor)', 'تنبيهي بالزيارات الجديدة (مرة واحدة كحد أقصى في الساعة لكل زائر)', 'Bei neuen Besuchen benachrichtigen (max. 1x pro Stunde je Besucher)')}</span>
+                          <input type="checkbox" name="visit_alerts" defaultChecked={portfolio.integrations.visitAlertsEnabled} className="h-5 w-5 accent-amber-600 shrink-0" />
+                        </label>
+                        <p className={`text-xs font-bold ${integrationsStatus?.telegram ? 'text-emerald-600' : 'text-red-500'}`}>
+                          {integrationsStatus === null ? '…' : integrationsStatus.telegram
+                            ? tr3('Server: Telegram is configured', 'الخادم: تيليغرام مُهيّأ', 'Server: Telegram ist eingerichtet')
+                            : tr3('Server: not configured. Set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in .env', 'الخادم: غير مُهيّأ. ضع TELEGRAM_BOT_TOKEN وTELEGRAM_CHAT_ID في ملف .env', 'Server: nicht eingerichtet. TELEGRAM_BOT_TOKEN und TELEGRAM_CHAT_ID in .env setzen')}
+                        </p>
+                        {integrationsStatus?.telegram && (
+                          <button type="button" onClick={triggerTestTelegram} className="text-xs bg-sky-600/10 text-sky-600 font-bold border border-sky-500/20 px-4 min-h-[44px] rounded hover:bg-sky-600/20 transition-colors">
+                            {tr3('Send test message', 'إرسال رسالة اختبار', 'Testnachricht senden')}
                           </button>
                         )}
                       </div>
 
                       <div className="space-y-3">
-                        <div className="flex items-center justify-between border-b pb-1.5">
-                          <p className="text-xs font-bold uppercase text-amber-600">Email System Alerts</p>
-                          <input type="checkbox" name="email_enabled" defaultChecked={portfolio.integrations.emailEnabled} className="h-4 w-4 accent-amber-600" />
-                        </div>
+                        <p className="text-xs font-bold uppercase text-amber-600 border-b pb-1.5">E-Mail</p>
+                        <label className="flex items-center justify-between gap-3 text-xs min-h-[40px]">
+                          <span>{tr3('E-mail me contact-form messages', 'إرسال رسائل نموذج التواصل إلى بريدي', 'Kontaktnachrichten per E-Mail senden')}</span>
+                          <input type="checkbox" name="email_enabled" defaultChecked={portfolio.integrations.emailEnabled} className="h-5 w-5 accent-amber-600 shrink-0" />
+                        </label>
                         <div>
-                          <label className="block text-[10px] uppercase text-slate-400 font-bold mb-1">Alert Destination Email</label>
-                          <input type="email" name="email_address" defaultValue={portfolio.integrations.emailAlertAddress} className="w-full text-xs px-3 py-2 border rounded dark:bg-slate-900 dark:border-slate-700 font-mono text-[10px]" />
+                          <label className="block text-xs uppercase text-slate-500 font-bold mb-1">{tr3('Alert destination e-mail', 'بريد استلام التنبيهات', 'Ziel-E-Mail für Benachrichtigungen')}</label>
+                          <input type="email" name="email_address" defaultValue={portfolio.integrations.emailAlertAddress} className="w-full text-base sm:text-sm px-3 py-2 border rounded dark:bg-slate-900 dark:border-slate-700" />
                         </div>
-                        <div className="p-4 bg-amber-500/5 rounded-xl border border-amber-600/10 text-[10px] leading-relaxed text-slate-500 dark:text-zinc-400">
-                          <p className="font-bold mb-1 uppercase">Telegram Bot Setup Guide:</p>
-                          <ol className="list-decimal list-inside space-y-1">
-                            <li>Find <b>@BotFather</b> on Telegram. Send <code>/newbot</code>.</li>
-                            <li>Copy the resulting HTTP API Token and paste it here.</li>
-                            <li>Find <b>@userinfobot</b> on Telegram, send a message to retrieve your 10-digit <b>Chat ID</b>, and paste it here.</li>
-                            <li>Start a chat with your new bot and click save. You are now connected!</li>
-                          </ol>
-                        </div>
+                        <p className={`text-xs font-bold ${integrationsStatus?.email ? 'text-emerald-600' : 'text-red-500'}`}>
+                          {integrationsStatus === null ? '…' : integrationsStatus.email
+                            ? tr3('Server: mail (SMTP) is configured', 'الخادم: البريد (SMTP) مُهيّأ', 'Server: E-Mail (SMTP) ist eingerichtet')
+                            : tr3('Server: not configured. Set SMTP_USER and SMTP_PASS in .env', 'الخادم: غير مُهيّأ. ضع SMTP_USER وSMTP_PASS في ملف .env', 'Server: nicht eingerichtet. SMTP_USER und SMTP_PASS in .env setzen')}
+                        </p>
+                        {integrationsStatus?.email && (
+                          <button type="button" onClick={triggerTestEmail} className="text-xs bg-amber-600/10 text-amber-700 font-bold border border-amber-600/20 px-4 min-h-[44px] rounded hover:bg-amber-600/20 transition-colors">
+                            {tr3('Send test e-mail', 'إرسال بريد اختبار', 'Test-E-Mail senden')}
+                          </button>
+                        )}
                       </div>
                     </div>
 
                     <div className="flex justify-end pt-2 border-t">
-                      <button type="submit" className="bg-amber-600 text-white px-5 py-2 rounded-lg text-xs font-bold uppercase">
-                        Save Integrations
+                      <button type="submit" className="bg-amber-600 text-white px-5 min-h-[44px] rounded-lg text-xs font-bold uppercase">
+                        {tr3('Save', 'حفظ', 'Speichern')}
                       </button>
                     </div>
                   </form>
@@ -1666,6 +1756,11 @@ export default function App() {
                 {/* Tab: INBOX MESSAGES */}
                 {adminTab === 'inbox' && (
                   <div className="space-y-3">
+                    <div className="flex justify-end">
+                      <button type="button" onClick={loadMessages} className="text-xs font-bold px-4 min-h-[40px] border rounded-lg hover:border-amber-600/50">
+                        {tr3('Refresh', 'تحديث', 'Aktualisieren')}
+                      </button>
+                    </div>
                     {messages.length === 0 ? (
                       <p className="text-center py-6 text-xs text-gray-500">{translations[lang].adminNoMessages}</p>
                     ) : (
@@ -1679,21 +1774,15 @@ export default function App() {
                               </div>
                               <div className="flex gap-1 shrink-0">
                                 {!m.isRead && (
-                                  <button onClick={() => {
-                                    saveMessagesToLocal(messages.map(x => x.id === m.id ? { ...x, isRead: true } : x));
-                                  }} className="px-2 py-0.5 bg-amber-600 text-white text-[9px] font-bold rounded">
+                                  <button onClick={() => markMessageRead(m.id)} className="px-2.5 min-h-[32px] bg-amber-600 text-white text-[11px] font-bold rounded">
                                     {translations[lang].adminMarkRead}
                                   </button>
                                 )}
-                                <button onClick={() => {
-                                  if(window.confirm('Delete message?')) {
-                                    saveMessagesToLocal(messages.filter(x => x.id !== m.id));
-                                  }
-                                }} className="p-1 text-red-400 hover:text-red-600"><Trash size={12} /></button>
+                                <button onClick={() => deleteMessage(m.id)} aria-label="Delete" className="p-2 text-red-400 hover:text-red-600"><Trash size={14} /></button>
                               </div>
                             </div>
                             <h4 className="text-xs font-bold text-slate-800 dark:text-zinc-200 mb-1">{m.subject}</h4>
-                            <p className="text-xs text-slate-600 dark:text-zinc-300 bg-slate-50 dark:bg-slate-900 p-2.5 rounded border border-slate-100 dark:border-slate-800 leading-relaxed text-justify">{m.message}</p>
+                            <p className="text-xs text-slate-600 dark:text-zinc-300 bg-slate-50 dark:bg-slate-900 p-2.5 rounded border border-slate-100 dark:border-slate-800 leading-relaxed text-start whitespace-pre-wrap">{m.message}</p>
                           </div>
                         ))}
                       </div>
@@ -2136,18 +2225,24 @@ export default function App() {
 
             {/* Direct Social & Quick Connect Buttons */}
             <div className="flex flex-wrap justify-center sm:justify-start gap-3 p-3 bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-slate-200/60 dark:border-slate-800 text-xs font-bold">
+              {portfolio.socials.whatsapp && (
               <a href={portfolio.socials.whatsapp} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 px-4 py-2.5 min-h-[44px] bg-emerald-500/10 text-emerald-600 rounded-lg border border-emerald-500/20 hover:bg-emerald-500/20 transition-all">
                 <MessageCircle size={15} /> WhatsApp
               </a>
+              )}
+              {portfolio.socials.telegram && (
               <a href={portfolio.socials.telegram} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 px-4 py-2.5 min-h-[44px] bg-sky-500/10 text-sky-600 rounded-lg border border-sky-500/20 hover:bg-sky-500/20 transition-all">
                 <SendHorizontal size={15} /> Telegram
               </a>
+              )}
               <a href={`mailto:${portfolio.contact.email}`} className="flex items-center gap-1.5 px-4 py-2.5 min-h-[44px] bg-amber-500/10 text-amber-600 rounded-lg border border-amber-500/20 hover:bg-amber-500/20 transition-all">
                 <Mail size={15} /> {portfolio.contact.email}
               </a>
+              {portfolio.contact.phone && (
               <a href={`tel:${portfolio.contact.phone}`} className="flex items-center gap-1.5 px-4 py-2.5 min-h-[44px] bg-slate-200/50 dark:bg-slate-800 text-slate-700 dark:text-zinc-200 rounded-lg border border-slate-300/40 dark:border-slate-700 hover:bg-slate-200 transition-all">
                 <Phone size={15} /> {portfolio.contact.phone}
               </a>
+              )}
             </div>
 
             <form onSubmit={handleContactSubmit} className="space-y-4">
@@ -2223,9 +2318,11 @@ export default function App() {
             <p className="text-[11px] text-slate-400 mt-0.5">&copy; {new Date().getFullYear()} {portfolio.name} &middot; {portfolio.contact.email}</p>
           </div>
           <div className="flex gap-4 text-[11px] font-bold uppercase tracking-wider">
+            {portfolio.socials.github && (
             <a href={portfolio.socials.github} target="_blank" rel="noopener noreferrer" className="hover:text-amber-600 transition-colors flex items-center gap-1">
               <span>GitHub</span> <ExternalLink size={8} />
             </a>
+            )}
             {isProfileUrl(portfolio.socials.linkedin) && (
               <a href={portfolio.socials.linkedin} target="_blank" rel="noopener noreferrer" className="hover:text-amber-600 transition-colors flex items-center gap-1">
               <span>LinkedIn</span> <ExternalLink size={8} />

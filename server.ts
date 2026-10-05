@@ -332,9 +332,8 @@ app.post('/api/verify-admin', rateLimit('verify-admin', 10, 15 * 60 * 1000), (re
 // API: Dispatch Real Telegram Alert
 app.post('/api/notify-telegram', requireAdmin, async (req, res) => {
   try {
-    const rawBotToken = req.body.botToken || process.env.TELEGRAM_BOT_TOKEN;
-    const botToken = sanitizeTelegramToken(rawBotToken);
-    const chatId = req.body.chatId || process.env.TELEGRAM_CHAT_ID;
+    const botToken = sanitizeTelegramToken(process.env.TELEGRAM_BOT_TOKEN || '');
+    const chatId = (process.env.TELEGRAM_CHAT_ID || '').trim();
     const message = req.body.message;
 
     if (!botToken || !chatId || !message) {
@@ -394,16 +393,37 @@ app.get('/api/portfolio', (req, res) => {
 // API: Save / Persist Portfolio Data
 app.post('/api/portfolio', requireAdmin, (req, res) => {
   try {
-    const portfolioData = req.body;
-    if (!portfolioData || typeof portfolioData !== 'object') {
+    const d = req.body;
+    const valid =
+      d && typeof d === 'object' &&
+      typeof d.name === 'string' && d.name.trim().length > 0 &&
+      typeof d.portraitImage === 'string' && d.portraitImage.length > 0 &&
+      Array.isArray(d.experiences) && Array.isArray(d.projects) &&
+      Array.isArray(d.education) && Array.isArray(d.skills);
+    if (!valid) {
       return res.status(400).json({ error: 'Invalid portfolio data payload' });
     }
-    fs.writeFileSync(portfolioStorePath, JSON.stringify(portfolioData, null, 2), 'utf-8');
+
+    // Credentials live in .env only; never persist them in the JSON store
+    d.integrations = { ...(d.integrations || {}), telegramBotToken: '', telegramChatId: '' };
+
+    const previous = readStoredPortfolio();
+    fs.writeFileSync(portfolioStorePath, JSON.stringify(d, null, 2), 'utf-8');
+
+    // Remove admin-uploaded images that are no longer used anywhere (replaced photos, deleted projects)
+    if (previous) {
+      const stillUsed = referencedImageFiles(d);
+      for (const file of referencedImageFiles(previous)) {
+        if (!stillUsed.has(file) && UPLOAD_NAME.test(file)) {
+          try { fs.unlinkSync(path.join(process.cwd(), 'src', 'assets', 'images', file)); } catch { /* already gone */ }
+        }
+      }
+    }
     console.log('[PORTFOLIO SYNC] Successfully persisted portfolio changes to disk!');
     return res.json({ success: true, message: 'Portfolio data saved successfully' });
   } catch (err: any) {
     console.error('Error saving portfolio store:', err);
-    return res.status(500).json({ error: 'Failed to save portfolio store: ' + err.message });
+    return res.status(500).json({ error: 'Failed to save portfolio store' });
   }
 });
 
@@ -435,19 +455,74 @@ app.get('/api/messages', requireAdmin, (req, res) => {
 });
 
 // API: Save Persisted Messages
-app.post('/api/messages', requireAdmin, (req, res) => {
+function readMessages(): any[] {
   try {
-    const msgs = req.body;
-    if (!Array.isArray(msgs)) {
-      return res.status(400).json({ error: 'Invalid messages payload' });
+    if (fs.existsSync(messagesStorePath)) {
+      const parsed = JSON.parse(fs.readFileSync(messagesStorePath, 'utf-8'));
+      if (Array.isArray(parsed)) return parsed;
     }
-    fs.writeFileSync(messagesStorePath, JSON.stringify(msgs, null, 2), 'utf-8');
-    return res.json({ success: true });
-  } catch (err: any) {
-    console.error('Error saving messages store:', err);
-    return res.status(500).json({ error: 'Failed to save messages store' });
-  }
+  } catch { /* unreadable store: treat as empty */ }
+  return [];
+}
+
+// Mark one message as read (does not touch messages that arrived in the meantime)
+app.patch('/api/messages/:id/read', requireAdmin, (req, res) => {
+  const msgs = readMessages();
+  const idx = msgs.findIndex((m) => m.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: 'Message not found' });
+  msgs[idx] = { ...msgs[idx], isRead: true };
+  fs.writeFileSync(messagesStorePath, JSON.stringify(msgs, null, 2), 'utf-8');
+  return res.json({ success: true });
 });
+
+// Delete one message
+app.delete('/api/messages/:id', requireAdmin, (req, res) => {
+  const msgs = readMessages();
+  const next = msgs.filter((m) => m.id !== req.params.id);
+  if (next.length === msgs.length) return res.status(404).json({ error: 'Message not found' });
+  fs.writeFileSync(messagesStorePath, JSON.stringify(next, null, 2), 'utf-8');
+  return res.json({ success: true });
+});
+
+// Which server-side integrations are configured (booleans only, never the secrets)
+app.get('/api/integrations-status', requireAdmin, (req, res) => {
+  res.json({
+    telegram: !!(sanitizeTelegramToken(process.env.TELEGRAM_BOT_TOKEN || '') && (process.env.TELEGRAM_CHAT_ID || '').trim()),
+    email: !!((process.env.SMTP_USER || '').trim() && (process.env.SMTP_PASS || process.env.EMAIL_APP_PASSWORD || '').trim())
+  });
+});
+
+
+// ---------------------------------------------------------------------------
+// Stored portfolio helpers (integration flags, uploaded-image bookkeeping)
+// ---------------------------------------------------------------------------
+function readStoredPortfolio(): any | null {
+  try {
+    if (fs.existsSync(portfolioStorePath)) return JSON.parse(fs.readFileSync(portfolioStorePath, 'utf-8'));
+  } catch { /* unreadable store: treat as empty */ }
+  return null;
+}
+
+// Defaults mirror src/data.ts. Secrets (bot token, chat id, SMTP) come from .env only.
+function readIntegrations() {
+  const i = readStoredPortfolio()?.integrations || {};
+  return {
+    telegramEnabled: i.telegramEnabled === true,
+    emailEnabled: i.emailEnabled !== false,
+    emailAlertAddress: typeof i.emailAlertAddress === 'string' ? i.emailAlertAddress.trim() : '',
+    visitAlertsEnabled: i.visitAlertsEnabled === true
+  };
+}
+
+const UPLOAD_NAME = /^user_upload_[\w-]+\.(png|jpe?g|webp|gif)$/i;
+function referencedImageFiles(data: any): Set<string> {
+  const found = new Set<string>();
+  const text = JSON.stringify(data ?? {});
+  const re = /\/src\/assets\/images\/([\w.-]+)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text))) found.add(m[1]);
+  return found;
+}
 
 // ---------------------------------------------------------------------------
 // Public endpoints (strictly validated + rate limited)
@@ -467,10 +542,10 @@ async function sendServerTelegram(html: string): Promise<void> {
   }
 }
 
-async function sendServerEmail(subject: string, body: string): Promise<void> {
+async function sendServerEmail(subject: string, body: string, toOverride?: string): Promise<void> {
   const smtpUser = (process.env.SMTP_USER || '').trim();
   const smtpPass = (process.env.SMTP_PASS || process.env.EMAIL_APP_PASSWORD || '').trim();
-  const to = (process.env.EMAIL_ALERT_ADDRESS || smtpUser).trim();
+  const to = (toOverride || process.env.EMAIL_ALERT_ADDRESS || smtpUser).trim();
   if (!smtpUser || !smtpPass || !to) return;
   try {
     const smtpPort = parseInt(process.env.SMTP_PORT || '587');
@@ -524,14 +599,20 @@ app.post('/api/contact', rateLimit('contact', 5, 60 * 60 * 1000), async (req, re
     }
     fs.writeFileSync(messagesStorePath, JSON.stringify([newMsg, ...existing].slice(0, 500), null, 2), 'utf-8');
 
+    const integ = readIntegrations();
     await Promise.all([
-      sendServerTelegram(
-        `✉️ <b>New Contact Form Submission</b>\n\n<b>From:</b> ${escapeHtml(name)}\n<b>Email:</b> ${escapeHtml(email)}\n<b>Subject:</b> ${escapeHtml(subject)}\n<b>Message:</b>\n<i>${escapeHtml(message)}</i>`
-      ),
-      sendServerEmail(
-        `Portfolio Contact: ${subject}`,
-        `New inquiry received:\n\nName: ${name}\nEmail: ${email}\nSubject: ${subject}\nMessage:\n${message}`
-      )
+      integ.telegramEnabled
+        ? sendServerTelegram(
+            `✉️ <b>New Contact Form Submission</b>\n\n<b>From:</b> ${escapeHtml(name)}\n<b>Email:</b> ${escapeHtml(email)}\n<b>Subject:</b> ${escapeHtml(subject)}\n<b>Message:</b>\n<i>${escapeHtml(message)}</i>`
+          )
+        : Promise.resolve(),
+      integ.emailEnabled
+        ? sendServerEmail(
+            `Portfolio Contact: ${subject}`,
+            `New inquiry received:\n\nName: ${name}\nEmail: ${email}\nSubject: ${subject}\nMessage:\n${message}`,
+            integ.emailAlertAddress
+          )
+        : Promise.resolve()
     ]);
 
     return res.json({ success: true, message: newMsg });
@@ -544,9 +625,7 @@ app.post('/api/contact', rateLimit('contact', 5, 60 * 60 * 1000), async (req, re
 // Optional silent visit alert (once per hour per IP, only if enabled in the CMS)
 app.post('/api/visit', rateLimit('visit', 1, 60 * 60 * 1000), async (req, res) => {
   try {
-    if (!fs.existsSync(portfolioStorePath)) return res.json({ success: true });
-    const data = JSON.parse(fs.readFileSync(portfolioStorePath, 'utf-8'));
-    if (data?.integrations?.visitAlertsEnabled) {
+    if (readIntegrations().visitAlertsEnabled) {
       const lang = ['en', 'ar', 'de'].includes(req.body?.lang) ? req.body.lang : 'en';
       await sendServerTelegram(`👁 <b>New Portfolio Session</b>\nTime: ${new Date().toISOString()}\nLanguage: ${lang}`);
     }
@@ -625,27 +704,26 @@ app.post('/api/upload-image', requireAdmin, async (req, res) => {
       return res.status(400).json({ error: 'Only PNG, JPEG, WEBP or GIF images are allowed' });
     }
 
-    const matches = base64Data.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
-    let buffer: Buffer;
-    let extension = 'jpg';
-
-    if (matches && matches.length === 3) {
-      const mimeType = matches[1];
-      if (mimeType.includes('png')) extension = 'png';
-      else if (mimeType.includes('webp')) extension = 'webp';
-      else if (mimeType.includes('gif')) extension = 'gif';
-      buffer = Buffer.from(matches[2], 'base64');
-    } else {
-      buffer = Buffer.from(base64Data, 'base64');
+    const buffer = Buffer.from(base64Data.slice(base64Data.indexOf(',') + 1), 'base64');
+    if (buffer.length < 100 || buffer.length > 5 * 1024 * 1024) {
+      return res.status(413).json({ error: 'Image must be between 100 bytes and 5 MB' });
     }
 
-    const cleanFileName = `user_upload_${Date.now()}.${extension}`;
+    // Trust the file's real signature, not the declared MIME type
+    let extension = '';
+    if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) extension = 'jpg';
+    else if (buffer.subarray(0, 4).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47]))) extension = 'png';
+    else if (buffer.subarray(0, 4).toString('ascii') === 'GIF8') extension = 'gif';
+    else if (buffer.subarray(0, 4).toString('ascii') === 'RIFF' && buffer.subarray(8, 12).toString('ascii') === 'WEBP') extension = 'webp';
+    if (!extension) {
+      return res.status(400).json({ error: 'File content is not a valid PNG, JPEG, WEBP or GIF image' });
+    }
+
+    const cleanFileName = `user_upload_${Date.now()}_${crypto.randomBytes(3).toString('hex')}.${extension}`;
     const targetDir = path.join(process.cwd(), 'src', 'assets', 'images');
-    
     if (!fs.existsSync(targetDir)) {
       fs.mkdirSync(targetDir, { recursive: true });
     }
-
     const targetPath = path.join(targetDir, cleanFileName);
     fs.writeFileSync(targetPath, buffer);
 
