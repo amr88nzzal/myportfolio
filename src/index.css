@@ -7,6 +7,7 @@
 @layer base {
   html {
     scroll-behavior: smooth;
+    scroll-padding-top: 7rem;
   }
   
   /* Apply fonts based on language context */
@@ -104,9 +105,12 @@
 .animate-marquee {
   display: flex;
   width: max-content;
+  direction: ltr;
   animation: marquee 25s linear infinite;
 }
 
-[dir="rtl"] .animate-marquee {
-  animation: marquee 25s linear infinite reverse;
+@media (prefers-reduced-motion: reduce) {
+  .animate-marquee {
+    animation: none;
+  }
 }

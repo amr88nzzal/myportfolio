@@ -5,6 +5,7 @@ import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import nodemailer from 'nodemailer';
 import fs from 'fs';
+import crypto from 'crypto';
 
 dotenv.config();
 
@@ -14,9 +15,97 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const port = process.env.PORT || 3300;
 
-// Increase payload limit for PDF base64 uploading
-app.use(express.json({ limit: '15mb' }));
-app.use(express.urlencoded({ extended: true, limit: '15mb' }));
+app.disable('x-powered-by');
+// Behind Docker / reverse proxy: use the real client IP for rate limiting
+app.set('trust proxy', 1);
+
+// Basic security headers
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  next();
+});
+
+// Large bodies only where really needed (admin-only routes); small limit everywhere else
+app.use('/api/analyze-cv', express.json({ limit: '15mb' }));
+app.use('/api/upload-image', express.json({ limit: '8mb' }));
+app.use(express.json({ limit: '1mb' }));
+app.use(express.urlencoded({ extended: true, limit: '1mb' }));
+
+// ---------------------------------------------------------------------------
+// Security helpers: rate limiting + signed admin session tokens
+// ---------------------------------------------------------------------------
+const rateHits = new Map<string, number[]>();
+function rateLimit(name: string, max: number, windowMs: number): express.RequestHandler {
+  return (req, res, next) => {
+    const key = `${name}:${req.ip}`;
+    const now = Date.now();
+    const recent = (rateHits.get(key) || []).filter((t) => now - t < windowMs);
+    if (recent.length >= max) {
+      res.setHeader('Retry-After', String(Math.ceil(windowMs / 1000)));
+      res.status(429).json({ error: 'Too many requests. Please try again later.' });
+      return;
+    }
+    recent.push(now);
+    rateHits.set(key, recent);
+    next();
+  };
+}
+const rateCleanup = setInterval(() => {
+  const now = Date.now();
+  for (const [key, times] of rateHits) {
+    if (!times.some((t) => now - t < 3600 * 1000)) rateHits.delete(key);
+  }
+}, 10 * 60 * 1000) as unknown as { unref?: () => void };
+rateCleanup.unref?.();
+
+// Secret used to sign admin session tokens. Set SESSION_SECRET (or ADMIN_PASSWORD) in .env.
+// If neither is set, a random secret is generated at boot (sessions end on restart).
+const SESSION_SECRET =
+  process.env.SESSION_SECRET || process.env.ADMIN_PASSWORD || crypto.randomBytes(32).toString('hex');
+const SESSION_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
+
+function signAdminToken(): string {
+  const exp = String(Date.now() + SESSION_TTL_MS);
+  const sig = crypto.createHmac('sha256', SESSION_SECRET).update(exp).digest('base64url');
+  return `${exp}.${sig}`;
+}
+
+function isValidAdminToken(token: string | undefined): boolean {
+  if (!token) return false;
+  const [exp, sig] = token.split('.');
+  if (!exp || !sig || Number(exp) < Date.now()) return false;
+  const expected = crypto.createHmac('sha256', SESSION_SECRET).update(exp).digest('base64url');
+  const a = Buffer.from(sig);
+  const b = Buffer.from(expected);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
+function bearerToken(req: express.Request): string | undefined {
+  const header = req.headers.authorization || '';
+  return header.startsWith('Bearer ') ? header.slice(7).trim() : undefined;
+}
+
+const requireAdmin: express.RequestHandler = (req, res, next) => {
+  if (isValidAdminToken(bearerToken(req))) return next();
+  res.status(401).json({ error: 'Unauthorized' });
+};
+
+function safeEqual(a: string, b: string): boolean {
+  const ab = Buffer.from(a);
+  const bb = Buffer.from(b);
+  return ab.length === bb.length && crypto.timingSafeEqual(ab, bb);
+}
+
+function escapeHtml(value: unknown): string {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
 
 // Set up Gemini
 const ai = new GoogleGenAI({
@@ -29,7 +118,7 @@ const ai = new GoogleGenAI({
 });
 
 // API: Analyze CV using Gemini
-app.post('/api/analyze-cv', async (req, res) => {
+app.post('/api/analyze-cv', requireAdmin, rateLimit('analyze-cv', 10, 60 * 60 * 1000), async (req, res) => {
   try {
     const { base64File, fileType = 'application/pdf', lang = 'en' } = req.body;
     if (!base64File) {
@@ -128,13 +217,13 @@ function sanitizeTelegramToken(rawToken: string): string {
 }
 
 // API: Generate Random OTP Passcode and send via Telegram & Email
-app.post('/api/request-otp', async (req, res) => {
+app.post('/api/request-otp', rateLimit('request-otp', 3, 15 * 60 * 1000), async (req, res) => {
   try {
-    const generatedPin = Math.floor(100000 + Math.random() * 900000).toString();
+    const generatedPin = crypto.randomInt(100000, 1000000).toString();
     const expiresAt = Date.now() + 10 * 60 * 1000; // 10 minutes
     activeAdminOTP = { code: generatedPin, expiresAt };
 
-    console.log(`[ADMIN OTP GENERATED] New temporary code: ${generatedPin} (Expires in 10 mins)`);
+    console.log('[ADMIN OTP] A new one-time code was generated (expires in 10 minutes).');
 
     const dispatchedTo: string[] = [];
     const alertText = `🔐 AMRO PORTFOLIO - CMS ADMIN PASSCODE\n\nYour 1-Time Security Passcode is: ${generatedPin}\n\nValid for 10 minutes. If you did not request this code, please ignore this message.`;
@@ -206,15 +295,14 @@ app.post('/api/request-otp', async (req, res) => {
     if (dispatchedTo.length > 0) {
       statusMsg = `✅ OTP Code sent successfully to: ${dispatchedTo.join(' & ')}`;
     } else {
-      statusMsg = `⚠️ OTP Code generated (${generatedPin}). Telegram issue: [${telegramError}], Email issue: [${emailError}]`;
+      statusMsg = '⚠️ Could not deliver the code: neither Telegram nor email is configured correctly on the server.';
     }
 
     return res.json({ 
       success: true, 
       codeSent: dispatchedTo.length > 0, 
       channels: dispatchedTo,
-      message: statusMsg,
-      debug: { telegramError, emailError }
+      message: statusMsg
     });
   } catch (err: any) {
     console.error('Error generating OTP:', err);
@@ -223,31 +311,26 @@ app.post('/api/request-otp', async (req, res) => {
 });
 
 // API: Secure Server-Side Admin Authentication Check
-app.post('/api/verify-admin', (req, res) => {
-  const { code } = req.body;
-  const configuredPassword = process.env.ADMIN_PASSWORD || 'a123698745r';
-  const inputCode = (code || '').trim();
+app.post('/api/verify-admin', rateLimit('verify-admin', 10, 15 * 60 * 1000), (req, res) => {
+  const inputCode = String(req.body?.code ?? '').trim();
+  // No built-in fallback password: the static password only works if ADMIN_PASSWORD is set in .env
+  const configuredPassword = (process.env.ADMIN_PASSWORD || '').trim();
 
-  // Check 1: Static ADMIN_PASSWORD
-  const isStaticValid = inputCode === configuredPassword.trim();
-
-  // Check 2: Dynamic One-Time OTP Passcode
-  const isOTPValid = activeAdminOTP && 
-                     activeAdminOTP.code === inputCode && 
-                     Date.now() < activeAdminOTP.expiresAt;
+  const isStaticValid = configuredPassword.length > 0 && safeEqual(inputCode, configuredPassword);
+  const isOTPValid =
+    !!activeAdminOTP && Date.now() < activeAdminOTP.expiresAt && safeEqual(inputCode, activeAdminOTP.code);
 
   if (isStaticValid || isOTPValid) {
-    console.log(`[ADMIN AUTH] Admin CMS successfully unlocked via ${isOTPValid ? 'Dynamic OTP' : 'Static Password'}`);
-    if (isOTPValid) activeAdminOTP = null; // Consume OTP once used
-    return res.json({ success: true, token: 'admin_authenticated_' + Date.now() });
-  } else {
-    console.warn('[ADMIN AUTH] Failed CMS unlock attempt');
-    return res.status(401).json({ success: false, error: 'Invalid passcode or expired OTP' });
+    if (isOTPValid) activeAdminOTP = null; // one-time use
+    console.log(`[ADMIN AUTH] Admin unlocked via ${isOTPValid ? 'one-time code' : 'password'}`);
+    return res.json({ success: true, token: signAdminToken() });
   }
+  console.warn('[ADMIN AUTH] Failed unlock attempt');
+  return res.status(401).json({ success: false, error: 'Invalid passcode or expired code' });
 });
 
 // API: Dispatch Real Telegram Alert
-app.post('/api/notify-telegram', async (req, res) => {
+app.post('/api/notify-telegram', requireAdmin, async (req, res) => {
   try {
     const rawBotToken = req.body.botToken || process.env.TELEGRAM_BOT_TOKEN;
     const botToken = sanitizeTelegramToken(rawBotToken);
@@ -295,6 +378,10 @@ app.get('/api/portfolio', (req, res) => {
     if (fs.existsSync(portfolioStorePath)) {
       const raw = fs.readFileSync(portfolioStorePath, 'utf-8');
       const data = JSON.parse(raw);
+      // Public visitors never receive integration secrets (bot token / chat id)
+      if (!isValidAdminToken(bearerToken(req)) && data && data.integrations) {
+        data.integrations = { ...data.integrations, telegramBotToken: '', telegramChatId: '' };
+      }
       return res.json(data);
     }
     return res.json(null);
@@ -305,7 +392,7 @@ app.get('/api/portfolio', (req, res) => {
 });
 
 // API: Save / Persist Portfolio Data
-app.post('/api/portfolio', (req, res) => {
+app.post('/api/portfolio', requireAdmin, (req, res) => {
   try {
     const portfolioData = req.body;
     if (!portfolioData || typeof portfolioData !== 'object') {
@@ -321,7 +408,7 @@ app.post('/api/portfolio', (req, res) => {
 });
 
 // API: Reset Portfolio to Default
-app.post('/api/reset-portfolio', (req, res) => {
+app.post('/api/reset-portfolio', requireAdmin, (req, res) => {
   try {
     if (fs.existsSync(portfolioStorePath)) {
       fs.unlinkSync(portfolioStorePath);
@@ -334,7 +421,7 @@ app.post('/api/reset-portfolio', (req, res) => {
 });
 
 // API: Get Persisted Messages
-app.get('/api/messages', (req, res) => {
+app.get('/api/messages', requireAdmin, (req, res) => {
   try {
     if (fs.existsSync(messagesStorePath)) {
       const raw = fs.readFileSync(messagesStorePath, 'utf-8');
@@ -348,9 +435,12 @@ app.get('/api/messages', (req, res) => {
 });
 
 // API: Save Persisted Messages
-app.post('/api/messages', (req, res) => {
+app.post('/api/messages', requireAdmin, (req, res) => {
   try {
     const msgs = req.body;
+    if (!Array.isArray(msgs)) {
+      return res.status(400).json({ error: 'Invalid messages payload' });
+    }
     fs.writeFileSync(messagesStorePath, JSON.stringify(msgs, null, 2), 'utf-8');
     return res.json({ success: true });
   } catch (err: any) {
@@ -359,8 +449,115 @@ app.post('/api/messages', (req, res) => {
   }
 });
 
+// ---------------------------------------------------------------------------
+// Public endpoints (strictly validated + rate limited)
+// ---------------------------------------------------------------------------
+async function sendServerTelegram(html: string): Promise<void> {
+  const botToken = sanitizeTelegramToken(process.env.TELEGRAM_BOT_TOKEN || '');
+  const chatId = (process.env.TELEGRAM_CHAT_ID || '').trim();
+  if (!botToken || !chatId) return;
+  try {
+    await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: chatId, text: html, parse_mode: 'HTML' })
+    });
+  } catch (err) {
+    console.error('Telegram alert failed');
+  }
+}
+
+async function sendServerEmail(subject: string, body: string): Promise<void> {
+  const smtpUser = (process.env.SMTP_USER || '').trim();
+  const smtpPass = (process.env.SMTP_PASS || process.env.EMAIL_APP_PASSWORD || '').trim();
+  const to = (process.env.EMAIL_ALERT_ADDRESS || smtpUser).trim();
+  if (!smtpUser || !smtpPass || !to) return;
+  try {
+    const smtpPort = parseInt(process.env.SMTP_PORT || '587');
+    const transporter = nodemailer.createTransport({
+      host: (process.env.SMTP_HOST || 'smtp.gmail.com').trim(),
+      port: smtpPort,
+      secure: smtpPort === 465,
+      auth: { user: smtpUser, pass: smtpPass }
+    });
+    await transporter.sendMail({
+      from: process.env.EMAIL_FROM || smtpUser,
+      to,
+      subject,
+      text: body
+    });
+  } catch (err) {
+    console.error('Email alert failed');
+  }
+}
+
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// Contact form: appends one message server-side (visitors can never read or overwrite the inbox)
+app.post('/api/contact', rateLimit('contact', 5, 60 * 60 * 1000), async (req, res) => {
+  try {
+    const name = String(req.body?.name ?? '').trim().slice(0, 100);
+    const email = String(req.body?.email ?? '').trim().slice(0, 150);
+    const subject = (String(req.body?.subject ?? '').trim() || 'Direct Inquiry').slice(0, 150);
+    const message = String(req.body?.message ?? '').trim().slice(0, 4000);
+
+    if (!name || !message || !EMAIL_PATTERN.test(email)) {
+      return res.status(400).json({ error: 'Please provide a valid name, email and message.' });
+    }
+
+    const newMsg = {
+      id: `msg-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`,
+      name,
+      email,
+      subject,
+      message,
+      date: new Date().toISOString().replace('T', ' ').substring(0, 16),
+      isRead: false
+    };
+
+    let existing: any[] = [];
+    if (fs.existsSync(messagesStorePath)) {
+      try {
+        const parsed = JSON.parse(fs.readFileSync(messagesStorePath, 'utf-8'));
+        if (Array.isArray(parsed)) existing = parsed;
+      } catch { /* start from an empty inbox */ }
+    }
+    fs.writeFileSync(messagesStorePath, JSON.stringify([newMsg, ...existing].slice(0, 500), null, 2), 'utf-8');
+
+    await Promise.all([
+      sendServerTelegram(
+        `✉️ <b>New Contact Form Submission</b>\n\n<b>From:</b> ${escapeHtml(name)}\n<b>Email:</b> ${escapeHtml(email)}\n<b>Subject:</b> ${escapeHtml(subject)}\n<b>Message:</b>\n<i>${escapeHtml(message)}</i>`
+      ),
+      sendServerEmail(
+        `Portfolio Contact: ${subject}`,
+        `New inquiry received:\n\nName: ${name}\nEmail: ${email}\nSubject: ${subject}\nMessage:\n${message}`
+      )
+    ]);
+
+    return res.json({ success: true, message: newMsg });
+  } catch (err) {
+    console.error('Contact form error');
+    return res.status(500).json({ error: 'Failed to send message' });
+  }
+});
+
+// Optional silent visit alert (once per hour per IP, only if enabled in the CMS)
+app.post('/api/visit', rateLimit('visit', 1, 60 * 60 * 1000), async (req, res) => {
+  try {
+    if (!fs.existsSync(portfolioStorePath)) return res.json({ success: true });
+    const data = JSON.parse(fs.readFileSync(portfolioStorePath, 'utf-8'));
+    if (data?.integrations?.visitAlertsEnabled) {
+      const lang = ['en', 'ar', 'de'].includes(req.body?.lang) ? req.body.lang : 'en';
+      await sendServerTelegram(`👁 <b>New Portfolio Session</b>\nTime: ${new Date().toISOString()}\nLanguage: ${lang}`);
+    }
+    return res.json({ success: true });
+  } catch {
+    return res.json({ success: true });
+  }
+});
+
 // API: Send Email Alert (via SMTP Nodemailer or Logger)
-app.post('/api/notify-email', async (req, res) => {
+app.post('/api/notify-email', requireAdmin, async (req, res) => {
   try {
     const to = req.body.to || process.env.EMAIL_ALERT_ADDRESS || process.env.SMTP_USER;
     const subject = req.body.subject;
@@ -391,7 +588,7 @@ app.post('/api/notify-email', async (req, res) => {
         to,
         subject,
         text: body,
-        html: `<div style="font-family: Arial, sans-serif; padding: 20px; border-radius: 8px; background: #f9fafb;"><h2 style="color: #1e3a8a;">${subject}</h2><p style="font-size: 15px; color: #374151; white-space: pre-wrap;">${body}</p></div>`
+        html: `<div style="font-family: Arial, sans-serif; padding: 20px; border-radius: 8px; background: #f9fafb;"><h2 style="color: #1e3a8a;">${escapeHtml(subject)}</h2><p style="font-size: 15px; color: #374151; white-space: pre-wrap;">${escapeHtml(body)}</p></div>`
       });
 
       console.log(`[SMTP EMAIL SENT] Successfully delivered to ${to}`);
@@ -414,11 +611,18 @@ app.post('/api/notify-email', async (req, res) => {
 });
 
 // API: Upload custom image from device
-app.post('/api/upload-image', async (req, res) => {
+app.post('/api/upload-image', requireAdmin, async (req, res) => {
   try {
     const { base64Data, fileName } = req.body;
     if (!base64Data) {
       return res.status(400).json({ error: 'No image data provided' });
+    }
+
+    if (typeof base64Data !== 'string' || base64Data.length > 7 * 1024 * 1024) {
+      return res.status(413).json({ error: 'Image too large (max ~5 MB)' });
+    }
+    if (!/^data:image\/(png|jpe?g|webp|gif);base64,/i.test(base64Data)) {
+      return res.status(400).json({ error: 'Only PNG, JPEG, WEBP or GIF images are allowed' });
     }
 
     const matches = base64Data.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);

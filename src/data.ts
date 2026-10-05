@@ -1,6 +1,7 @@
 import { PortfolioData } from './types';
 
 export const initialPortfolioData: PortfolioData = {
+  dataVersion: 3,
   name: "Amro Nazzal",
   portraitImage: "/src/assets/images/profile.jpg",
   officeImage: "/src/assets/images/profile.jpg",
@@ -10,9 +11,9 @@ export const initialPortfolioData: PortfolioData = {
     de: "Spezialist für Finanzsysteme & Full-Stack-Entwickler"
   },
   summary: {
-    en: "Highly versatile professional with 10+ years of proven experience in Accounting, Financial Management, and Software Development. Expert in bridging the gap between complex financial requirements and technical delivery. Combines strong analytical abilities with modern Full-Stack JavaScript skills (React, Node.js, PostgreSQL) to design, consult, and implement enterprise-grade financial systems.",
-    ar: "متخصص متعدد القدرات يتمتع بخبرة تزيد عن 10 سنوات في المحاسبة والإدارة المالية وتطوير البرمجيات. خبير في سد الفجوة بين المتطلبات المالية المعقدة والحلول التقنية المبتكرة. يجمع بين المهارات التحليلية القوية والخبرة الحديثة في تطوير البرمجيات متكاملة الخدمات (React, Node.js, PostgreSQL) لتصميم وتنفيذ الحلول والأنظمة المالية للمؤسسات.",
-    de: "Äußerst vielseitiger Fachmann mit über 10 Jahren bewährter Erfahrung in Rechnungswesen, Finanzmanagement und Softwareentwicklung. Experte darin, die Lücke zwischen komplexen Finanzanforderungen und deren technischer Umsetzung zu schließen. Verbindet starke analytische Fähigkeiten mit modernen Full-Stack-JavaScript-Kenntnissen (React, Node.js, PostgreSQL), um finanzielle ERP-Systeme für Unternehmen zu entwerfen und zu implementieren."
+    en: "Highly versatile professional with 10+ years of proven experience in Accounting, Financial Management, and Software Development. Expert in bridging the gap between complex financial requirements and technical delivery. Combines strong analytical abilities with modern Full-Stack JavaScript skills (React, Node.js, PostgreSQL) to design, consult, and implement enterprise-grade financial systems. Seeking an ERP Consulting, FinTech, or Business Analysis role.",
+    ar: "متخصص متعدد القدرات يتمتع بخبرة تزيد عن 10 سنوات في المحاسبة والإدارة المالية وتطوير البرمجيات. خبير في سد الفجوة بين المتطلبات المالية المعقدة والحلول التقنية المبتكرة. يجمع بين المهارات التحليلية القوية والخبرة الحديثة في تطوير البرمجيات متكاملة الخدمات (React, Node.js, PostgreSQL) لتصميم وتنفيذ الحلول والأنظمة المالية للمؤسسات. أبحث عن دور في استشارات ERP أو التكنولوجيا المالية (FinTech) أو تحليل الأعمال.",
+    de: "Äußerst vielseitiger Fachmann mit über 10 Jahren bewährter Erfahrung in Rechnungswesen, Finanzmanagement und Softwareentwicklung. Experte darin, die Lücke zwischen komplexen Finanzanforderungen und deren technischer Umsetzung zu schließen. Verbindet starke analytische Fähigkeiten mit modernen Full-Stack-JavaScript-Kenntnissen (React, Node.js, PostgreSQL), um finanzielle ERP-Systeme für Unternehmen zu entwerfen und zu implementieren. Gesucht: eine Position in ERP-Beratung, FinTech oder Business-Analyse."
   },
   contact: {
     email: "info@amrodev.com",
@@ -81,9 +82,9 @@ export const initialPortfolioData: PortfolioData = {
         de: "Syrien / Jordanien"
       },
       role: {
-        en: "Business Implementation Lead & Exclusive Agent",
-        ar: "مدير تنفيذ الأعمال والوكيل الحصري للشركة",
-        de: "Implementierungsleiter & Alleinvertreter (Freiberuflich/Inhaber)"
+        en: "Business Implementation Lead & Exclusive Agent for Jordan (Freelance Owner)",
+        ar: "مدير تنفيذ الأعمال والوكيل الحصري للأردن (مالك مستقل)",
+        de: "Implementierungsleiter & Exklusivvertreter für Jordanien (Freiberuflich/Inhaber)"
       },
       highlights: {
         en: [
@@ -101,10 +102,10 @@ export const initialPortfolioData: PortfolioData = {
           "إجراء اختبارات دقيقة لضمان جودة البرمجيات (QA) ومطابقتها للمعايير المحاسبية المعتمدة ونزاهة البيانات المالية."
         ],
         de: [
-          "Leitete den gesamten Geschäftszyklus im jordanischen Markt als Alleinvertreter (Vertrieb, Implementierung und Support).",
+          "Leitete den gesamten Geschäftszyklus im jordanischen Markt als Exklusivvertreter (Vertrieb, Implementierung und Support).",
           "Verhandelte und erstellte jährliche Support- und Wartungsverträge zur Sicherung wiederkehrender Einnahmequellen.",
           "Führte detaillierte Kundenbedarfsanalysen durch, um Finanzsoftwarelösungen anzupassen und Buchhaltungs-Workflows für KMUs zu optimieren.",
-          "Fungierte as primäre technische Schnittstelle und übersetzte komplexe Finanzanforderungen in klare Funktionsanforderungen für das Entwicklungsteam.",
+          "Fungierte als primäre technische Schnittstelle und übersetzte komplexe Finanzanforderungen in klare Funktionsanforderungen für das Entwicklungsteam.",
           "Durchführung strenger Qualitätssicherung (QA) und Softwaretests, um die Buchhaltungsgenauigkeit und Systemzuverlässigkeit zu gewährleisten."
         ]
       }
@@ -230,6 +231,35 @@ export const initialPortfolioData: PortfolioData = {
           "Sicherstellung einer präzisen Verfolgung von Ausgaben über mehrere Kostenstellen hinweg."
         ]
       }
+    },
+    {
+      id: "exp-julia",
+      period: "08.2010 - 09.2012",
+      company: "Julia Dumna Group (Julia Dumna Cafe)",
+      location: {
+        en: "Damascus, Syria",
+        ar: "دمشق، سوريا",
+        de: "Damaskus, Syrien"
+      },
+      role: {
+        en: "General Accountant",
+        ar: "محاسب عام",
+        de: "Allgemeiner Buchhalter"
+      },
+      highlights: {
+        en: [
+          "Managed and controlled the accounting cycle, including monthly and annual closings.",
+          "Analyzed accounting data to produce financial reports and statements."
+        ],
+        ar: [
+          "إدارة ومراقبة الدورة المحاسبية كاملة بما فيها الإقفالات الشهرية والسنوية.",
+          "تحليل البيانات المحاسبية لإعداد التقارير والقوائم المالية."
+        ],
+        de: [
+          "Führung und Kontrolle des Rechnungswesens inklusive Monats- und Jahresabschlüssen.",
+          "Analyse von Buchhaltungsdaten zur Erstellung von Finanzberichten und Abschlüssen."
+        ]
+      }
     }
   ],
   education: [
@@ -262,7 +292,7 @@ export const initialPortfolioData: PortfolioData = {
       school: {
         en: "Damascus University - Faculty of Economics",
         ar: "جامعة دمشق - كلية الاقتصاد",
-        de: "Wirtschaftsfakultät (Syrien)"
+        de: "Universität Damaskus – Fakultät für Wirtschaftswissenschaften"
       },
       period: "2007 - 2011",
       details: {
@@ -286,7 +316,8 @@ export const initialPortfolioData: PortfolioData = {
         { name: "Cost Controlling & Cost Center Analysis", level: 5 },
         { name: "AP/AR & Payroll Management", level: 5 },
         { name: "IFRS & Local GAAP Principles", level: 4 },
-        { name: "Financial Data Analysis (Excel, SQL)", level: 5 }
+        { name: "Financial Data Analysis (Excel, SQL)", level: 5 },
+        { name: "Software QA & L1/L2 Client Support", level: 4 }
       ]
     },
     {
@@ -333,17 +364,17 @@ export const initialPortfolioData: PortfolioData = {
         de: "Finanztechnologie & Kassensystem"
       },
       description: {
-        en: "A complete Web & Offline POS cash terminal hosted at pos.amrodev.com. Handles fast item scanning, multi-pay tender, real-time drawer reconciliation, invoice printing, and instant daily sales analytics.",
-        ar: "نظام نقطة بيع متكامل وشامل مستضاف على الرابط pos.amrodev.com. يدعم الجرد السريع للمنتجات، المبيعات الفورية، طباعة الفواتير، التسويات اليومية الصندوقية، ومتابعة الأرباح وحركات المبيعات لحظة بلحظة.",
-        de: "Vollständiges POS-Kassensystem unter pos.amrodev.com. Bietet schnelles Produktscanning, Belegerstellung, Kassenabstimmung und Echtzeit-Umsatzanalysen."
+        en: "A demo POS cash terminal (web & offline) hosted at pos.amrodev.com. Showcases fast item scanning, multi-pay tender, real-time drawer reconciliation, invoice printing, and instant daily sales analytics.",
+        ar: "نظام نقطة بيع تجريبي (Demo) مستضاف على الرابط pos.amrodev.com. يعرض الجرد السريع للمنتجات، المبيعات الفورية، طباعة الفواتير، التسويات اليومية الصندوقية، ومتابعة الأرباح وحركات المبيعات لحظة بلحظة.",
+        de: "Demo eines POS-Kassensystems unter pos.amrodev.com. Zeigt schnelles Produktscanning, Belegerstellung, Kassenabstimmung und Echtzeit-Umsatzanalysen."
       },
       tech: ["ReactJS", "NodeJS", "ExpressJS", "Tailwind CSS", "REST APIs"],
       image: "/src/assets/images/pos_system_dashboard_1790474752325.jpg",
       link: "http://pos.amrodev.com/",
       metrics: {
-        en: "Processes over 5,000+ daily sales transactions seamlessly",
-        ar: "يعالج أكثر من 5,000 عملية بيع يومية بكل سلاسة",
-        de: "Verarbeitet nahtlos über 5.000 tägliche Transaktionen"
+        en: "Demo project: fast scanning, multi-payment checkout and drawer reconciliation",
+        ar: "مشروع تجريبي: مسح سريع ودفع متعدد الطرق وتسوية الصندوق",
+        de: "Demo-Projekt: schnelles Scannen, Mehrfachzahlung und Kassenabstimmung"
       }
     },
     {
@@ -359,17 +390,17 @@ export const initialPortfolioData: PortfolioData = {
         de: "API & Schnittstellen"
       },
       description: {
-        en: "Enterprise RESTful API Integration Middleware hosted at pos-api.amrodev.com. Seamlessly connects independent POS terminals to the Sahlisoft ERP accounting backend, synchronizing inventory stock, general ledger journals, and customer account balances in real-time.",
-        ar: "بوابة ربط برمجية متطورة مستضافة على الرابط pos-api.amrodev.com. تربط أجهزة نقاط البيع الفرعية بنظام سهلي سوفت المحاسبي الـ ERP، مع مزامنة فورية للكميات المستودعية، القيود اليومية وحسابات الذمم للعملاء.",
-        de: "Hochleistungs-RESTful API Gateway unter pos-api.amrodev.com zur nahtlosen Verbindung von POS-Terminalen mit dem Sahlisoft ERP-Buchhaltungssystem in Echtzeit."
+        en: "A demo RESTful API integration layer hosted at pos-api.amrodev.com. Shows how to connect independent POS terminals to the Sahlisoft ERP accounting backend, synchronizing inventory stock, general ledger journals, and customer account balances in real-time.",
+        ar: "بوابة ربط برمجية تجريبية (Demo) مستضافة على الرابط pos-api.amrodev.com. توضّح كيفية ربط أجهزة نقاط البيع الفرعية بنظام سهلي سوفت المحاسبي الـ ERP، مع مزامنة فورية للكميات المستودعية، القيود اليومية وحسابات الذمم للعملاء.",
+        de: "Demo eines RESTful-API-Gateways unter pos-api.amrodev.com zur Verbindung von POS-Terminalen mit dem Sahlisoft ERP-Buchhaltungssystem in Echtzeit."
       },
       tech: ["NodeJS", "ExpressJS", "RESTful API", "Sahlisoft ERP Sync", "PostgreSQL"],
       image: "/src/assets/images/pos_api_gateway_1790474776484.jpg",
       link: "https://pos-api.amrodev.com/",
       metrics: {
-        en: "Synchronizes 10,000+ real-time inventory & ledger journal entries daily",
-        ar: "مزامنة أكثر من 10,000 قيد محاسبي وحركة مخزنية يومياً",
-        de: "Macht tägliche Synchronisation von 10.000+ Datensätzen möglich"
+        en: "Demo project: syncs inventory and ledger journals between POS and ERP",
+        ar: "مشروع تجريبي: مزامنة المخزون والقيود المحاسبية بين نقاط البيع ونظام ERP",
+        de: "Demo-Projekt: Synchronisation von Lagerbestand und Buchungen zwischen POS und ERP"
       }
     },
     {
@@ -385,17 +416,17 @@ export const initialPortfolioData: PortfolioData = {
         de: "Lagerverwaltung & Inventur"
       },
       description: {
-        en: "Real-time stock auditing and warehouse barcode scanning platform hosted at invscan.amrodev.com (Demo: admin / admin123). Enables fast barcode scanning, automated physical stock variance detection, inventory reconciliation, and discrepancy auditing.",
-        ar: "نظام جرد المستودعات الذكي المستضاف على الرابط invscan.amrodev.com (بيانات الدخول التجريبية: admin / admin123). يتيح الجرد السريع بواسطة الماسح الضوئي للباركود، كشف الفروقات بين الرصيد الفعلي والدفتري، وإصدار تقارير التسوية المخزنية.",
-        de: "Echtzeit-Lagerinventursystem unter invscan.amrodev.com (Login: admin / admin123). Ermöglicht mobiles Barcode-Scanning, automatischen Soll-Ist-Vergleich und Soll-Differenz-Berichte."
+        en: "A demo stock-auditing and warehouse barcode-scanning app hosted at invscan.amrodev.com (demo login: admin / admin123). Enables fast barcode scanning, automated physical stock variance detection, inventory reconciliation, and discrepancy auditing.",
+        ar: "نظام تجريبي (Demo) لجرد المستودعات بالباركود مستضاف على الرابط invscan.amrodev.com (بيانات الدخول التجريبية: admin / admin123). يتيح الجرد السريع بواسطة الماسح الضوئي للباركود، كشف الفروقات بين الرصيد الفعلي والدفتري، وإصدار تقارير التسوية المخزنية.",
+        de: "Demo eines Lagerinventursystems unter invscan.amrodev.com (Demo-Login: admin / admin123). Ermöglicht mobiles Barcode-Scanning, automatischen Soll-Ist-Vergleich und Soll-Differenz-Berichte."
       },
       tech: ["ReactJS", "Barcode Scanner", "NodeJS", "ExpressJS", "PostgreSQL"],
       image: "/src/assets/images/invscan_inventory_audit_1790474825936.jpg",
       link: "https://invscan.amrodev.com/",
       metrics: {
-        en: "Reduces physical stock counting time by 75% with zero margin of error",
-        ar: "تقليل زمن الجرد الفعلي للمستودعات بنسبة 75% ودقة 100%",
-        de: "75% Zeitersparnis bei der physischen Inventur"
+        en: "Demo project: barcode counting with automatic variance detection",
+        ar: "مشروع تجريبي: جرد بالباركود مع كشف تلقائي للفروقات",
+        de: "Demo-Projekt: Barcode-Inventur mit automatischer Differenzerkennung"
       }
     },
     {
@@ -411,17 +442,17 @@ export const initialPortfolioData: PortfolioData = {
         de: "Bildungsportal & SaaS"
       },
       description: {
-        en: "Global university admissions & educational consultancy portal hosted at afaq.amrodev.com. Assists international students in applying for university programs, managing visa documentation, qualification equivalency, and tracking application milestones.",
-        ar: "منصة آفاق العالمية للقبولات الجامعية المستضافة على الرابط afaq.amrodev.com. تساعد الطلاب الدوليين في الحصول على القبولات الجامعية، إدارة مستندات التأشيرات والمحاضر الدراسية، وتتبع مراحل القبول بمرونة فائقة.",
-        de: "Umfassendes Bildungsportal unter afaq.amrodev.com zur Betreuung internationaler Studenten bei Studienplatzbewerbungen, Visadokumenten und Universitätszulassungen."
+        en: "A demo university-admissions and consultancy portal hosted at afaq.amrodev.com. Assists international students in applying for university programs, managing visa documentation, qualification equivalency, and tracking application milestones.",
+        ar: "نموذج تجريبي (Demo) لمنصة قبولات جامعية واستشارات تعليمية مستضاف على الرابط afaq.amrodev.com. تساعد الطلاب الدوليين في الحصول على القبولات الجامعية، إدارة مستندات التأشيرات والمحاضر الدراسية، وتتبع مراحل القبول بمرونة فائقة.",
+        de: "Demo eines Bildungsportals unter afaq.amrodev.com zur Betreuung internationaler Studenten bei Studienplatzbewerbungen, Visadokumenten und Universitätszulassungen."
       },
       tech: ["ReactJS", "NodeJS", "ExpressJS", "Tailwind CSS", "Document Management"],
       image: "/src/assets/images/afaq_global_actual_landing_1790479625710.jpg",
       link: "https://afaq.amrodev.com/",
       metrics: {
-        en: "Processed 1,200+ university application document workflows",
-        ar: "معالجة أكثر من 1,200 طلب قبول جامعي ومستند دراسي",
-        de: "Über 1.200 erfolgreich verarbeitete Studienbewerbungen"
+        en: "Demo project: application tracking and document workflow",
+        ar: "مشروع تجريبي: تتبع طلبات القبول وسير المستندات",
+        de: "Demo-Projekt: Bewerbungsverfolgung und Dokumenten-Workflow"
       }
     },
     {
@@ -437,39 +468,20 @@ export const initialPortfolioData: PortfolioData = {
         de: "Bildungsportal & Zulassungen"
       },
       description: {
-        en: "The initial lightweight university admissions portal hosted at afaq-0.amrodev.com. Served as the founding MVP design for matching international students with university applications prior to launching the official main platform at afaq.amrodev.com.",
-        ar: "نظام آفاق التعليمي لتأمين القبولات الجامعية للطلاب والمستضاف على الرابط afaq-0.amrodev.com. يمثل التصميم الأولي والمبسط المعتمد لمعالجة الطلبات والمؤهلات قبل إطلاق المنصة الرسمية والجامعية لـ آفاق (afaq.amrodev.com).",
-        de: "Das initiale schlanke Universitätszulassungsportal unter afaq-0.amrodev.com. Diente als Prototyp-Version (MVP) für Studienplatzbewerbungen vor dem Start der Hauptplattform afaq.amrodev.com."
+        en: "A demo of the first lightweight MVP of the admissions portal, hosted at afaq-0.amrodev.com, built before the fuller version at afaq.amrodev.com.",
+        ar: "نموذج تجريبي (Demo) للنسخة الأولى المبسطة (MVP) من منصة القبولات، مستضاف على الرابط afaq-0.amrodev.com، وقد بُني قبل النسخة الأشمل (afaq.amrodev.com).",
+        de: "Demo der ersten schlanken MVP-Version des Zulassungsportals unter afaq-0.amrodev.com, entstanden vor der umfangreicheren Version afaq.amrodev.com."
       },
       tech: ["ReactJS", "Vite", "Tailwind CSS", "NodeJS", "JSON API"],
       image: "/src/assets/images/afaq_lite_educational_portal_1790479388600.jpg",
       link: "https://afaq-0.amrodev.com/",
       metrics: {
-        en: "Served as the founding MVP portal processing 300+ initial student applications",
-        ar: "النسخة التأسيسية الأولى (MVP) التي معالجة أكثر من 300 طلب قبول جامعي مبدئي",
-        de: "Erfolgreicher MVP-Start für über 300 erste Studienplatzbewerbungen"
+        en: "Demo project: lightweight MVP of the admissions workflow",
+        ar: "مشروع تجريبي: نسخة أولية مبسطة (MVP) من سير عمل القبولات",
+        de: "Demo-Projekt: schlanke MVP-Version des Zulassungs-Workflows"
       }
     }
   ]
 };
 
-export const initialMessages: any[] = [
-  {
-    id: "msg-1",
-    name: "Dr. Michael Weber",
-    email: "m.weber@fintech-leipzig.de",
-    subject: "ERP Consultant Collaboration Inquiry",
-    message: "Hallo Amro, ich habe mir Ihr Profil angesehen. Die einzigartige Kombination aus tiefer Buchhaltungserfahrung (10+ Jahre) und modernen React/NodeJS-Kenntnissen ist extrem wertvoll für unsere Fintech-Sparte. Lassen Sie uns nächste Woche auf einen Kaffee in Leipzig treffen oder telefonieren.",
-    date: "2026-09-26 09:30",
-    isRead: false
-  },
-  {
-    id: "msg-2",
-    name: "Lina Al-Masri",
-    email: "lina@sahli-jo.com",
-    subject: "Greetings from Amman!",
-    message: "Hi Amro, hope you are doing amazing in Germany! We miss your technical execution and finance systems leadership here. Do you have availability for freelance advisory on our new SaaS ledger component?",
-    date: "2026-09-25 15:45",
-    isRead: true
-  }
-];
+export const initialMessages: any[] = [];

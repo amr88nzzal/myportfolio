@@ -107,6 +107,7 @@ export interface IntegrationsConfig {
 }
 
 export interface PortfolioData {
+  dataVersion?: number;
   name: string;
   portraitImage: string;
   officeImage: string;
