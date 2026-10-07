@@ -1,11 +1,14 @@
 import express from 'express';
-import { GoogleGenAI, Type } from '@google/genai';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import nodemailer from 'nodemailer';
 import fs from 'fs';
 import crypto from 'crypto';
+import {
+  safeEqual, escapeHtml, EMAIL_PATTERN, sanitizeTelegramToken, isBotUserAgent,
+  createSessionTokens, createRateLimiter, detectImageType, orphanedUploads
+} from './backend/utils';
 
 dotenv.config();
 
@@ -25,11 +28,20 @@ app.use((req, res, next) => {
   res.setHeader('X-Frame-Options', 'SAMEORIGIN');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
   res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  if (process.env.NODE_ENV === 'production') {
+    // Report-Only: nothing is blocked; violations only appear in the browser console.
+    // After checking the console on all pages, rename the header to Content-Security-Policy to enforce it.
+    res.setHeader(
+      'Content-Security-Policy-Report-Only',
+      "default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
+      "font-src 'self' https://fonts.gstatic.com data:; script-src 'self'; connect-src 'self'; " +
+      "frame-ancestors 'self'; base-uri 'self'; form-action 'self'; object-src 'none'"
+    );
+  }
   next();
 });
 
 // Large bodies only where really needed (admin-only routes); small limit everywhere else
-app.use('/api/analyze-cv', express.json({ limit: '15mb' }));
 app.use('/api/upload-image', express.json({ limit: '8mb' }));
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
@@ -37,28 +49,30 @@ app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 // ---------------------------------------------------------------------------
 // Security helpers: rate limiting + signed admin session tokens
 // ---------------------------------------------------------------------------
-const rateHits = new Map<string, number[]>();
+const limiter = createRateLimiter();
+
+// Client IP for rate limiting. Behind Cloudflare, set TRUST_CLOUDFLARE_HEADERS=true to use CF-Connecting-IP.
+// Only enable it when port 3300 is NOT reachable directly from the internet (otherwise the header can be spoofed).
+function clientIp(req: express.Request): string {
+  if (process.env.TRUST_CLOUDFLARE_HEADERS === 'true') {
+    const cf = req.headers['cf-connecting-ip'];
+    if (typeof cf === 'string' && cf.trim()) return cf.trim();
+  }
+  return req.ip || 'unknown';
+}
+
 function rateLimit(name: string, max: number, windowMs: number): express.RequestHandler {
   return (req, res, next) => {
-    const key = `${name}:${req.ip}`;
-    const now = Date.now();
-    const recent = (rateHits.get(key) || []).filter((t) => now - t < windowMs);
-    if (recent.length >= max) {
-      res.setHeader('Retry-After', String(Math.ceil(windowMs / 1000)));
+    const result = limiter.check(`${name}:${clientIp(req)}`, max, windowMs);
+    if (!result.ok) {
+      res.setHeader('Retry-After', String(result.retryAfterSec));
       res.status(429).json({ error: 'Too many requests. Please try again later.' });
       return;
     }
-    recent.push(now);
-    rateHits.set(key, recent);
     next();
   };
 }
-const rateCleanup = setInterval(() => {
-  const now = Date.now();
-  for (const [key, times] of rateHits) {
-    if (!times.some((t) => now - t < 3600 * 1000)) rateHits.delete(key);
-  }
-}, 10 * 60 * 1000) as unknown as { unref?: () => void };
+const rateCleanup = setInterval(() => limiter.cleanup(), 10 * 60 * 1000) as unknown as { unref?: () => void };
 rateCleanup.unref?.();
 
 // Secret used to sign admin session tokens. Set SESSION_SECRET (or ADMIN_PASSWORD) in .env.
@@ -67,21 +81,9 @@ const SESSION_SECRET =
   process.env.SESSION_SECRET || process.env.ADMIN_PASSWORD || crypto.randomBytes(32).toString('hex');
 const SESSION_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
 
-function signAdminToken(): string {
-  const exp = String(Date.now() + SESSION_TTL_MS);
-  const sig = crypto.createHmac('sha256', SESSION_SECRET).update(exp).digest('base64url');
-  return `${exp}.${sig}`;
-}
-
-function isValidAdminToken(token: string | undefined): boolean {
-  if (!token) return false;
-  const [exp, sig] = token.split('.');
-  if (!exp || !sig || Number(exp) < Date.now()) return false;
-  const expected = crypto.createHmac('sha256', SESSION_SECRET).update(exp).digest('base64url');
-  const a = Buffer.from(sig);
-  const b = Buffer.from(expected);
-  return a.length === b.length && crypto.timingSafeEqual(a, b);
-}
+const sessions = createSessionTokens(SESSION_SECRET, SESSION_TTL_MS);
+const signAdminToken = (): string => sessions.sign();
+const isValidAdminToken = (token: string | undefined): boolean => sessions.verify(token);
 
 function bearerToken(req: express.Request): string | undefined {
   const header = req.headers.authorization || '';
@@ -93,129 +95,10 @@ const requireAdmin: express.RequestHandler = (req, res, next) => {
   res.status(401).json({ error: 'Unauthorized' });
 };
 
-function safeEqual(a: string, b: string): boolean {
-  const ab = Buffer.from(a);
-  const bb = Buffer.from(b);
-  return ab.length === bb.length && crypto.timingSafeEqual(ab, bb);
-}
-
-function escapeHtml(value: unknown): string {
-  return String(value ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
-
-// Set up Gemini
-const ai = new GoogleGenAI({
-  apiKey: process.env.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY,
-  httpOptions: {
-    headers: {
-      'User-Agent': 'aistudio-build',
-    }
-  }
-});
-
-// API: Analyze CV using Gemini
-app.post('/api/analyze-cv', requireAdmin, rateLimit('analyze-cv', 10, 60 * 60 * 1000), async (req, res) => {
-  try {
-    const { base64File, fileType = 'application/pdf', lang = 'en' } = req.body;
-    if (!base64File) {
-      return res.status(400).json({ error: 'No file provided' });
-    }
-
-    const prompt = `You are an expert HR systems analyst and recruitment matcher.
-Analyze this candidate's uploaded CV/Resume. Compare their background with Amro Nazzal's profile:
-- Name: Amro Nazzal
-- Profile: Financial Systems Specialist & Full-Stack Developer with 10+ years bridging ERP finance software, complex corporate accounts (BMW, Solider, Sahlisoft), and React/NodeJS development.
-
-Extract the following information from the attached document and provide it in JSON format:
-1. Candidate Name (from the CV)
-2. Professional Title / Focus
-3. Key Technical Skills (up to 12 items)
-4. Key Soft Skills (up to 8 items)
-5. Summary of overall career profile (3-4 sentences)
-6. Highlighted Work History (companies, roles, years)
-7. Match Assessment: A professional, personalized, and encouraging evaluation of how their background overlaps, complements, or could collaborate with Amro Nazzal's expertise (e.g., tech-finance collaboration, ERP consulting, software development synergies, or general professional fit).
-
-IMPORTANT: Provide the entire JSON response translated to the user's requested language context: '${lang}'. Ensure high quality translation, especially for technical terminology.`;
-
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash', // Using highly capable standard model
-      contents: [
-        {
-          inlineData: {
-            mimeType: fileType,
-            data: base64File
-          }
-        },
-        {
-          text: prompt
-        }
-      ],
-      config: {
-        responseMimeType: 'application/json',
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            name: { type: Type.STRING },
-            title: { type: Type.STRING },
-            technicalSkills: {
-              type: Type.ARRAY,
-              items: { type: Type.STRING }
-            },
-            softSkills: {
-              type: Type.ARRAY,
-              items: { type: Type.STRING }
-            },
-            summary: { type: Type.STRING },
-            experience: {
-              type: Type.ARRAY,
-              items: {
-                type: Type.OBJECT,
-                properties: {
-                  company: { type: Type.STRING },
-                  role: { type: Type.STRING },
-                  years: { type: Type.STRING }
-                },
-                required: ['company', 'role', 'years']
-              }
-            },
-            matchScore: { 
-              type: Type.INTEGER, 
-              description: 'A computed match/collaboration score from 0 to 100 representing potential synergy with Amro Nazzal'
-            },
-            collaborationMatch: { type: Type.STRING }
-          },
-          required: ['name', 'title', 'technicalSkills', 'softSkills', 'summary', 'experience', 'matchScore', 'collaborationMatch']
-        }
-      }
-    });
-
-    const resultText = response.text || '{}';
-    res.json(JSON.parse(resultText));
-  } catch (error: any) {
-    console.error('Error analyzing CV:', error);
-    res.status(500).json({ error: error.message || 'Failed to analyze CV document.' });
-  }
-});
-
 // In-memory store for dynamic Admin OTP passcodes (valid for 10 minutes)
 let activeAdminOTP: { code: string; expiresAt: number } | null = null;
 
 // Helper to sanitize Telegram Bot Token if full API URL was provided
-function sanitizeTelegramToken(rawToken: string): string {
-  if (!rawToken) return '';
-  let token = rawToken.trim();
-  if (token.includes('bot')) {
-    const parts = token.split('bot');
-    token = parts[parts.length - 1];
-  }
-  token = token.replace(/\/getUpdates.*/, '').replace(/\/sendMessage.*/, '').replace(/\/$/, '').trim();
-  return token;
-}
-
 // API: Generate Random OTP Passcode and send via Telegram & Email
 app.post('/api/request-otp', rateLimit('request-otp', 3, 15 * 60 * 1000), async (req, res) => {
   try {
@@ -412,11 +295,8 @@ app.post('/api/portfolio', requireAdmin, (req, res) => {
 
     // Remove admin-uploaded images that are no longer used anywhere (replaced photos, deleted projects)
     if (previous) {
-      const stillUsed = referencedImageFiles(d);
-      for (const file of referencedImageFiles(previous)) {
-        if (!stillUsed.has(file) && UPLOAD_NAME.test(file)) {
-          try { fs.unlinkSync(path.join(process.cwd(), 'src', 'assets', 'images', file)); } catch { /* already gone */ }
-        }
+      for (const file of orphanedUploads(previous, d)) {
+        try { fs.unlinkSync(path.join(process.cwd(), 'src', 'assets', 'images', file)); } catch { /* already gone */ }
       }
     }
     console.log('[PORTFOLIO SYNC] Successfully persisted portfolio changes to disk!');
@@ -514,19 +394,6 @@ function readIntegrations() {
   };
 }
 
-const UPLOAD_NAME = /^user_upload_[\w-]+\.(png|jpe?g|webp|gif)$/i;
-function referencedImageFiles(data: any): Set<string> {
-  const found = new Set<string>();
-  const text = JSON.stringify(data ?? {});
-  const re = /\/src\/assets\/images\/([\w.-]+)/g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(text))) found.add(m[1]);
-  return found;
-}
-
-// ---------------------------------------------------------------------------
-// Public endpoints (strictly validated + rate limited)
-// ---------------------------------------------------------------------------
 async function sendServerTelegram(html: string): Promise<void> {
   const botToken = sanitizeTelegramToken(process.env.TELEGRAM_BOT_TOKEN || '');
   const chatId = (process.env.TELEGRAM_CHAT_ID || '').trim();
@@ -566,11 +433,15 @@ async function sendServerEmail(subject: string, body: string, toOverride?: strin
   }
 }
 
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // Contact form: appends one message server-side (visitors can never read or overwrite the inbox)
 app.post('/api/contact', rateLimit('contact', 5, 60 * 60 * 1000), async (req, res) => {
   try {
+    // Honeypot: real visitors never fill this hidden field. Pretend success so bots learn nothing.
+    if (String(req.body?.website ?? '').trim()) {
+      return res.json({ success: true, message: { id: 'ok', isRead: true } });
+    }
+
     const name = String(req.body?.name ?? '').trim().slice(0, 100);
     const email = String(req.body?.email ?? '').trim().slice(0, 150);
     const subject = (String(req.body?.subject ?? '').trim() || 'Direct Inquiry').slice(0, 150);
@@ -622,10 +493,55 @@ app.post('/api/contact', rateLimit('contact', 5, 60 * 60 * 1000), async (req, re
   }
 });
 
+// GitHub profile + repositories, fetched server-side and cached for 15 minutes.
+// Avoids the 60 requests/hour per-visitor limit of the unauthenticated API and keeps visitor IPs private.
+// Optional: GITHUB_TOKEN in .env (read-only, no scopes needed) raises the server's own limit to 5000/hour.
+const GITHUB_TTL_MS = 15 * 60 * 1000;
+let githubCache: { at: number; username: string; payload: { user: any; repos: any[] } } | null = null;
+
+function githubUsername(): string {
+  const url = String(readStoredPortfolio()?.socials?.github || '');
+  const candidate = url.split('/').filter(Boolean).pop() || '';
+  return /^[A-Za-z0-9-]{1,39}$/.test(candidate) ? candidate : 'amr88nzzal';
+}
+
+app.get('/api/github', rateLimit('github', 60, 60 * 60 * 1000), async (req, res) => {
+  const username = githubUsername();
+  if (githubCache && githubCache.username === username && Date.now() - githubCache.at < GITHUB_TTL_MS) {
+    return res.json(githubCache.payload);
+  }
+  try {
+    const headers: Record<string, string> = { Accept: 'application/vnd.github+json', 'User-Agent': 'amrodev-portfolio' };
+    if (process.env.GITHUB_TOKEN) headers.Authorization = `Bearer ${process.env.GITHUB_TOKEN.trim()}`;
+    const [userRes, reposRes] = await Promise.all([
+      fetch(`https://api.github.com/users/${username}`, { headers }),
+      fetch(`https://api.github.com/users/${username}/repos?sort=updated&per_page=12`, { headers })
+    ]);
+    if (!userRes.ok || !reposRes.ok) throw new Error(`GitHub API ${userRes.status}/${reposRes.status}`);
+    const user = await userRes.json();
+    const repos = (await reposRes.json()) as any[];
+    // Send only what the page displays
+    const payload = {
+      user: { public_repos: user.public_repos, followers: user.followers, created_at: user.created_at, location: user.location, html_url: user.html_url },
+      repos: (Array.isArray(repos) ? repos : []).filter((r) => !r.fork).map((r) => ({
+        id: r.id, name: r.name, description: r.description, html_url: r.html_url,
+        language: r.language, stargazers_count: r.stargazers_count, pushed_at: r.pushed_at
+      }))
+    };
+    githubCache = { at: Date.now(), username, payload };
+    return res.json(payload);
+  } catch (err) {
+    console.error('GitHub fetch failed:', (err as Error).message);
+    // Serve stale data if we have it; otherwise an empty result (the page simply hides the section)
+    return res.json(githubCache?.payload || { user: null, repos: [] });
+  }
+});
+
 // Optional silent visit alert (once per hour per IP, only if enabled in the CMS)
 app.post('/api/visit', rateLimit('visit', 1, 60 * 60 * 1000), async (req, res) => {
   try {
-    if (readIntegrations().visitAlertsEnabled) {
+    const isBot = isBotUserAgent(req.headers['user-agent']);
+    if (!isBot && readIntegrations().visitAlertsEnabled) {
       const lang = ['en', 'ar', 'de'].includes(req.body?.lang) ? req.body.lang : 'en';
       await sendServerTelegram(`👁 <b>New Portfolio Session</b>\nTime: ${new Date().toISOString()}\nLanguage: ${lang}`);
     }
@@ -710,11 +626,7 @@ app.post('/api/upload-image', requireAdmin, async (req, res) => {
     }
 
     // Trust the file's real signature, not the declared MIME type
-    let extension = '';
-    if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) extension = 'jpg';
-    else if (buffer.subarray(0, 4).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47]))) extension = 'png';
-    else if (buffer.subarray(0, 4).toString('ascii') === 'GIF8') extension = 'gif';
-    else if (buffer.subarray(0, 4).toString('ascii') === 'RIFF' && buffer.subarray(8, 12).toString('ascii') === 'WEBP') extension = 'webp';
+    const extension = detectImageType(buffer);
     if (!extension) {
       return res.status(400).json({ error: 'File content is not a valid PNG, JPEG, WEBP or GIF image' });
     }
@@ -742,7 +654,12 @@ const uploadsDir = path.join(process.cwd(), 'src', 'assets', 'images');
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
-app.use('/src/assets/images', express.static(uploadsDir));
+app.use('/src/assets/images', express.static(uploadsDir, {
+  // Admin uploads have unique names -> cache forever; other files may be replaced by hand -> always revalidate
+  setHeaders: (res, filePath) => {
+    if (path.basename(filePath).startsWith('user_upload_')) res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+  }
+}));
 
 // Serve public assets (PDF CVs, icons, etc.)
 const publicStaticDir = path.join(process.cwd(), 'public');
@@ -753,8 +670,13 @@ app.use(express.static(publicStaticDir));
 
 // Serve static files or Vite middleware
 if (process.env.NODE_ENV === 'production') {
-  app.use(express.static(path.join(__dirname, 'dist')));
+  // Vite names build files with a content hash -> safe to cache for a year; index.html must always be re-checked
+  app.use('/assets', express.static(path.join(__dirname, 'dist', 'assets'), { maxAge: '1y', immutable: true }));
+  app.use(express.static(path.join(__dirname, 'dist'), { index: false, setHeaders: (res, filePath) => {
+    if (filePath.endsWith('.html')) res.setHeader('Cache-Control', 'no-cache');
+  } }));
   app.get('*', (req, res) => {
+    res.setHeader('Cache-Control', 'no-cache');
     res.sendFile(path.join(__dirname, 'dist', 'index.html'));
   });
 } else {

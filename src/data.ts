@@ -1,10 +1,9 @@
 import { PortfolioData } from './types';
 
 export const initialPortfolioData: PortfolioData = {
-  dataVersion: 4,
+  dataVersion: 6,
   name: "Amro Nazzal",
   portraitImage: "/images/amro-portrait.jpg",
-  officeImage: "/images/amro-portrait.jpg",
   title: {
     en: "Financial Systems Specialist & Full-Stack Developer",
     ar: "أخصائي نظم مالية ومطور ويب متكامل",
@@ -370,7 +369,7 @@ export const initialPortfolioData: PortfolioData = {
       },
       tech: ["ReactJS", "NodeJS", "ExpressJS", "Tailwind CSS", "REST APIs"],
       image: "/src/assets/images/pos_system_dashboard_1790474752325.jpg",
-      link: "http://pos.amrodev.com/",
+      link: "https://pos.amrodev.com/",
       metrics: {
         en: "Demo project: fast scanning, multi-payment checkout and drawer reconciliation",
         ar: "مشروع تجريبي: مسح سريع ودفع متعدد الطرق وتسوية الصندوق",
@@ -418,7 +417,7 @@ export const initialPortfolioData: PortfolioData = {
       description: {
         en: "A demo stock-auditing and warehouse barcode-scanning app hosted at invscan.amrodev.com (demo login: admin / admin123). Enables fast barcode scanning, automated physical stock variance detection, inventory reconciliation, and discrepancy auditing.",
         ar: "نظام تجريبي (Demo) لجرد المستودعات بالباركود مستضاف على الرابط invscan.amrodev.com (بيانات الدخول التجريبية: admin / admin123). يتيح الجرد السريع بواسطة الماسح الضوئي للباركود، كشف الفروقات بين الرصيد الفعلي والدفتري، وإصدار تقارير التسوية المخزنية.",
-        de: "Demo eines Lagerinventursystems unter invscan.amrodev.com (Demo-Login: admin / admin123). Ermöglicht mobiles Barcode-Scanning, automatischen Soll-Ist-Vergleich und Soll-Differenz-Berichte."
+        de: "Demo eines Lagerinventursystems unter invscan.amrodev.com (Demo-Login: admin / admin123). Ermöglicht mobiles Barcode-Scanning, automatischen Soll-Ist-Vergleich und Differenzberichte."
       },
       tech: ["ReactJS", "Barcode Scanner", "NodeJS", "ExpressJS", "PostgreSQL"],
       image: "/src/assets/images/invscan_inventory_audit_1790474825936.jpg",
@@ -484,4 +483,3 @@ export const initialPortfolioData: PortfolioData = {
   ]
 };
 
-export const initialMessages: any[] = [];

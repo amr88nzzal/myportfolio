@@ -11,7 +11,8 @@ WORKDIR /app
 
 # Copy package descriptors & install dependencies with peer resolution flag
 COPY package*.json ./
-RUN npm install --legacy-peer-deps
+# Use the lock file when it exists (reproducible builds); otherwise resolve fresh
+RUN if [ -f package-lock.json ]; then npm ci --legacy-peer-deps; else npm install --legacy-peer-deps; fi
 
 # Copy full application code
 COPY . .
@@ -32,11 +33,12 @@ RUN npm install -g tsx
 
 # Copy package descriptors & install production dependencies
 COPY package*.json ./
-RUN npm install --omit=dev --legacy-peer-deps
+RUN if [ -f package-lock.json ]; then npm ci --omit=dev --legacy-peer-deps; else npm install --omit=dev --legacy-peer-deps; fi
 
 # Copy build artifacts and necessary source directories
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/server.ts ./server.ts
+COPY --from=builder /app/backend ./backend
 COPY --from=builder /app/src ./src
 COPY --from=builder /app/public ./public
 

@@ -6,3 +6,7 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# runtime data (messages / CMS store) and build output
+data/
+server.js

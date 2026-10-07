@@ -102,3 +102,19 @@ docker compose up -d --build
 * فحص حالة الحاوية: `docker compose ps`
 * فحص السجلات والـ Logs: `docker compose logs -f`
 * الدخول المباشر: **`https://amrodev.com`**
+
+---
+
+### 7️⃣ ملاحظات مهمة بعد التحديثات
+
+* **محتوى الموقع المحفوظ على الخادم:** يُخزَّن في `data/portfolio-store.json`. يحمل الملف `src/data.ts` رقم `dataVersion`؛ إذا كان أحدث من النسخة المخزنة يتجاهل الموقع النسخة القديمة ويعرض الافتراضي. ارفع الرقم عند كل تعديل على `data.ts`.
+* **دخول الإدارة:** أيقونة القفل مخفية عن الزوار. افتح `https://amrodev.com/#admin`. اضبط `ADMIN_PASSWORD` و`SESSION_SECRET` في `.env` (لا توجد كلمة مرور افتراضية).
+* **فخ وحدة الصور:** `docker-compose.yml` يربط الوحدة `portfolio_uploads` بالمجلد `/app/src/assets/images`. الوحدة تُملأ من الصورة مرة واحدة فقط، وبعدها تتغلب ملفاتها على أي ملف بنفس الاسم في البناء الجديد. لذلك صورتك الشخصية الثابتة صارت في `public/images/`.
+* **حذف ملف قديم داخل الحاوية:**
+  ```bash
+  docker compose exec amro-portfolio ls -la /app/src/assets/images
+  docker compose exec amro-portfolio rm /app/src/assets/images/اسم-الملف
+  ```
+  لا تحذف صور المشاريع (`pos_*` و`invscan_*` و`afaq_*` و`erp_*` و`inventory_*`).
+
+📚 **التوثيق الكامل بالعربية:** انظر `README.md` والمجلد `docs/`.
