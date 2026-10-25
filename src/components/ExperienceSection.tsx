@@ -3,9 +3,11 @@ import { Briefcase } from 'lucide-react';
 import { translations } from '../i18n';
 import { type Lang } from '../lib/helpers';
 
+import type { WorkExperience } from '../types';
+
 interface ExperienceSectionProps {
   activeExperienceTab: any;
-  getFilteredExperiences: (...args: any[]) => any;
+  getFilteredExperiences: () => WorkExperience[];
   lang: Lang;
   setActiveExperienceTab: (value: any) => void;
   setShowAllExperience: (value: any) => void;
@@ -48,7 +50,7 @@ export default function ExperienceSection({ activeExperienceTab, getFilteredExpe
                   </div>
                   <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-zinc-400">{exp.role[lang]}</h4>
                   <ul className="space-y-1 text-xs text-slate-600 dark:text-zinc-300 leading-relaxed list-inside list-disc pt-1.5 ps-1 pe-1 text-start">
-                    {exp.highlights[lang].map((highlight, hIdx) => (
+                    {exp.highlights[lang].map((highlight: string, hIdx: number) => (
                       <li key={hIdx} className="ps-0.5">{highlight}</li>
                     ))}
                   </ul>

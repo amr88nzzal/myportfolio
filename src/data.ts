@@ -1,7 +1,7 @@
 import { PortfolioData } from './types';
 
 export const initialPortfolioData: PortfolioData = {
-  dataVersion: 6,
+  dataVersion: 9,
   name: "Amro Nazzal",
   portraitImage: "/images/amro-portrait.jpg",
   title: {
@@ -351,6 +351,36 @@ export const initialPortfolioData: PortfolioData = {
   ],
   projects: [
     {
+      id: "proj-hrms",
+      title: {
+        en: "HRMS Enterprise HR & Payroll Management System",
+        ar: "نظام إدارة الموارد البشرية والرواتب الشامل (HRMS)",
+        de: "HRMS Enterprise-Personal- & Abrechnungssystem"
+      },
+      category: {
+        en: "Enterprise HR & Payroll",
+        ar: "أنظمة الموارد البشرية والرواتب",
+        de: "Personalwesen & Payroll"
+      },
+      description: {
+        en: "A comprehensive enterprise Human Resources and Payroll Management System hosted at hr.amrodev.com. Features complete employee lifecycle management, multi-branch attendance tracking, leave requests with attachments, automated payroll calculation, loan and deduction tracking, organizational charts, and financial ledger journal integration.",
+        ar: "نظام متكامل لإدارة الموارد البشرية والرواتب المؤسسي مستضاف على الرابط hr.amrodev.com. يغطي دورة حياة الموظف كاملة، تتبع الحضور والانصراف متعدد الفروع، إدارة الإجازات والعهد والسلف، احتساب مسير الرواتب الآلي وإصدار القسائم، الهيكل التنظيمي، والربط المحاسبي مع قيود اليومية.",
+        de: "Umfassendes Enterprise-Personal- und Abrechnungssystem unter hr.amrodev.com. Beinhaltet vollständige Mitarbeiterverwaltung, Zeiterfassung über mehrere Standorte, Urlaubsanträge, automatische Gehaltsabrechnung, Darlehensverwaltung, Organigramme und Buchhaltungsanbindung."
+      },
+      tech: ["ReactJS", "NodeJS", "TypeScript", "PostgreSQL", "Tailwind CSS", "Docker", "REST APIs"],
+      image: "/src/assets/images/hr_management_system.jpg",
+      link: "https://hr.amrodev.com/",
+      demoCredentials: {
+        username: "admin@amrodev.com",
+        password: "@dmin123456"
+      },
+      metrics: {
+        en: "Demo project: full employee lifecycle, attendance, automated payroll & ledger integration",
+        ar: "مشروع تجريبي: دورة كاملة للموظف، حضور وانصراف، رواتب مؤتمتة وربط محاسبي",
+        de: "Demo-Projekt: Vollständige Personalverwaltung, Zeiterfassung, Payroll & Buchhaltungsanbindung"
+      }
+    },
+    {
       id: "proj-pos-system",
       title: {
         en: "POS Point of Sale & Cash Terminal System",
@@ -415,13 +445,17 @@ export const initialPortfolioData: PortfolioData = {
         de: "Lagerverwaltung & Inventur"
       },
       description: {
-        en: "A demo stock-auditing and warehouse barcode-scanning app hosted at invscan.amrodev.com (demo login: admin / admin123). Enables fast barcode scanning, automated physical stock variance detection, inventory reconciliation, and discrepancy auditing.",
-        ar: "نظام تجريبي (Demo) لجرد المستودعات بالباركود مستضاف على الرابط invscan.amrodev.com (بيانات الدخول التجريبية: admin / admin123). يتيح الجرد السريع بواسطة الماسح الضوئي للباركود، كشف الفروقات بين الرصيد الفعلي والدفتري، وإصدار تقارير التسوية المخزنية.",
-        de: "Demo eines Lagerinventursystems unter invscan.amrodev.com (Demo-Login: admin / admin123). Ermöglicht mobiles Barcode-Scanning, automatischen Soll-Ist-Vergleich und Differenzberichte."
+        en: "A demo stock-auditing and warehouse barcode-scanning app hosted at invscan.amrodev.com. Enables fast barcode scanning, automated physical stock variance detection, inventory reconciliation, and discrepancy auditing.",
+        ar: "نظام تجريبي (Demo) لجرد المستودعات بالباركود مستضاف على الرابط invscan.amrodev.com. يتيح الجرد السريع بواسطة الماسح الضوئي للباركود، كشف الفروقات بين الرصيد الفعلي والدفتري، وإصدار تقارير التسوية المخزنية.",
+        de: "Demo eines Lagerinventursystems unter invscan.amrodev.com. Ermöglicht mobiles Barcode-Scanning, automatischen Soll-Ist-Vergleich und Differenzberichte."
       },
       tech: ["ReactJS", "Barcode Scanner", "NodeJS", "ExpressJS", "PostgreSQL"],
       image: "/src/assets/images/invscan_inventory_audit_1790474825936.jpg",
       link: "https://invscan.amrodev.com/",
+      demoCredentials: {
+        username: "admin",
+        password: "admin123"
+      },
       metrics: {
         en: "Demo project: barcode counting with automatic variance detection",
         ar: "مشروع تجريبي: جرد بالباركود مع كشف تلقائي للفروقات",

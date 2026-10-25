@@ -505,19 +505,51 @@ function githubUsername(): string {
   return /^[A-Za-z0-9-]{1,39}$/.test(candidate) ? candidate : 'amr88nzzal';
 }
 
+function isValidGitHubToken(token?: string): boolean {
+  if (!token) return false;
+  const t = token.trim();
+  if (!t) return false;
+  const lower = t.toLowerCase();
+  if (lower.includes('dummy') || lower.includes('fake') || lower.includes('example') || lower.includes('your_') || lower.length < 20) {
+    return false;
+  }
+  return true;
+}
+
 app.get('/api/github', rateLimit('github', 60, 60 * 60 * 1000), async (req, res) => {
   const username = githubUsername();
   if (githubCache && githubCache.username === username && Date.now() - githubCache.at < GITHUB_TTL_MS) {
     return res.json(githubCache.payload);
   }
   try {
-    const headers: Record<string, string> = { Accept: 'application/vnd.github+json', 'User-Agent': 'amrodev-portfolio' };
-    if (process.env.GITHUB_TOKEN) headers.Authorization = `Bearer ${process.env.GITHUB_TOKEN.trim()}`;
-    const [userRes, reposRes] = await Promise.all([
+    const baseHeaders: Record<string, string> = {
+      Accept: 'application/vnd.github+json',
+      'User-Agent': 'amrodev-portfolio'
+    };
+    const token = process.env.GITHUB_TOKEN;
+    const hasValidToken = isValidGitHubToken(token);
+    let headers: Record<string, string> = hasValidToken
+      ? { ...baseHeaders, Authorization: `Bearer ${token!.trim()}` }
+      : { ...baseHeaders };
+
+    let [userRes, reposRes] = await Promise.all([
       fetch(`https://api.github.com/users/${username}`, { headers }),
       fetch(`https://api.github.com/users/${username}/repos?sort=updated&per_page=12`, { headers })
     ]);
-    if (!userRes.ok || !reposRes.ok) throw new Error(`GitHub API ${userRes.status}/${reposRes.status}`);
+
+    // If request failed with 401 or 403 when using token, retry immediately without token as public request
+    if ((userRes.status === 401 || userRes.status === 403 || reposRes.status === 401 || reposRes.status === 403) && headers.Authorization) {
+      console.warn('GitHub token was rejected (401/403), retrying as public unauthenticated request...');
+      headers = { ...baseHeaders };
+      [userRes, reposRes] = await Promise.all([
+        fetch(`https://api.github.com/users/${username}`, { headers }),
+        fetch(`https://api.github.com/users/${username}/repos?sort=updated&per_page=12`, { headers })
+      ]);
+    }
+
+    if (!userRes.ok || !reposRes.ok) {
+      throw new Error(`GitHub API ${userRes.status}/${reposRes.status}`);
+    }
     const user = await userRes.json();
     const repos = (await reposRes.json()) as any[];
     // Send only what the page displays
@@ -531,7 +563,7 @@ app.get('/api/github', rateLimit('github', 60, 60 * 60 * 1000), async (req, res)
     githubCache = { at: Date.now(), username, payload };
     return res.json(payload);
   } catch (err) {
-    console.error('GitHub fetch failed:', (err as Error).message);
+    console.warn('GitHub fetch notice:', (err as Error).message);
     // Serve stale data if we have it; otherwise an empty result (the page simply hides the section)
     return res.json(githubCache?.payload || { user: null, repos: [] });
   }

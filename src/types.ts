@@ -72,6 +72,12 @@ export interface Project {
   tech: string[];
   image: string;
   link: string;
+  repoUrl?: string;
+  demoCredentials?: {
+    username?: string;
+    password?: string;
+    method?: string;
+  };
   metrics: {
     en: string;
     ar: string;

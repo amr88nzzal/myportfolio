@@ -1,5 +1,5 @@
 import React from 'react';
-import { Eye, Plus, Trash, Upload } from 'lucide-react';
+import { Eye, KeyRound, Plus, Trash, Upload } from 'lucide-react';
 import type { PortfolioData, Project } from '../../types';
 import { type Lang } from '../../lib/helpers';
 
@@ -53,7 +53,7 @@ export default function AdminProjectsTab({ editingProj, handleDeleteProject, han
                       e.target.value = '';
                       if (!file) return;
                       const url = await uploadImageFile(file);
-                      if (url) setEditingProj((prev) => (prev ? { ...prev, image: url } : prev));
+                      if (url) setEditingProj((prev: any) => (prev ? { ...prev, image: url } : prev));
                     }} />
                   </label>
                 </div>
@@ -82,6 +82,93 @@ export default function AdminProjectsTab({ editingProj, handleDeleteProject, han
               <input type="text" placeholder="Metrics (AR)" value={editingProj.metrics.ar} onChange={(e) => setEditingProj({...editingProj, metrics: {...editingProj.metrics, ar: e.target.value}})} className="text-xs p-2 border rounded dark:bg-slate-900 dark:border-slate-700 font-arabic" dir="rtl" />
               <input type="text" placeholder="Metrics (DE)" value={editingProj.metrics.de} onChange={(e) => setEditingProj({...editingProj, metrics: {...editingProj.metrics, de: e.target.value}})} className="text-xs p-2 border rounded dark:bg-slate-900 dark:border-slate-700" />
             </div>
+
+            {/* Demo Credentials (Optional - appears on project card if provided, disappears when empty) */}
+            <div className="p-3 bg-slate-50 dark:bg-slate-900/60 rounded-lg border border-slate-200 dark:border-slate-800 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-amber-600 flex items-center gap-1.5">
+                  <KeyRound size={13} />
+                  {tr3(
+                    'Demo Credentials & Access Method (Optional)',
+                    'بيانات وطريقة الدخول التجريبي (اختياري)',
+                    'Demo-Zugangsdaten & Zugriffsmethode (optional)'
+                  )}
+                </span>
+                {(editingProj.demoCredentials?.username || editingProj.demoCredentials?.password || editingProj.demoCredentials?.method) && (
+                  <button
+                    type="button"
+                    onClick={() => setEditingProj({ ...editingProj, demoCredentials: { username: '', password: '', method: '' } })}
+                    className="text-[11px] text-red-500 hover:text-red-700 underline font-medium"
+                  >
+                    {tr3('Clear credentials', 'مسح البيانات', 'Zugangsdaten löschen')}
+                  </button>
+                )}
+              </div>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                {tr3(
+                  'Shows a dedicated credentials box under the project description. Leave blank to hide.',
+                  'يظهر صندوق مخصص لبيانات الدخول أسفل شرح المشروع في البطاقة. اترك الحقول فارغة لإخفائه تلقائياً.',
+                  'Zeigt eine Zugangsdaten-Box unter der Beschreibung an. Leer lassen, um sie auszublenden.'
+                )}
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 mb-1">
+                    {tr3('Username / Email', 'اسم المستخدم / البريد', 'Benutzername / E-Mail')}
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. admin@amrodev.com"
+                    value={editingProj.demoCredentials?.username || ''}
+                    onChange={(e) => setEditingProj({
+                      ...editingProj,
+                      demoCredentials: {
+                        ...(editingProj.demoCredentials || {}),
+                        username: e.target.value
+                      }
+                    })}
+                    className="w-full text-xs p-2 border rounded dark:bg-slate-900 dark:border-slate-700 font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 mb-1">
+                    {tr3('Password', 'كلمة المرور', 'Passwort')}
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. @dmin123456"
+                    value={editingProj.demoCredentials?.password || ''}
+                    onChange={(e) => setEditingProj({
+                      ...editingProj,
+                      demoCredentials: {
+                        ...(editingProj.demoCredentials || {}),
+                        password: e.target.value
+                      }
+                    })}
+                    className="w-full text-xs p-2 border rounded dark:bg-slate-900 dark:border-slate-700 font-mono"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 mb-1">
+                  {tr3('Access Method / Notes (Optional)', 'طريقة الدخول أو تعليمات إضافية (اختياري)', 'Zugriffsmethode / Hinweise (optional)')}
+                </label>
+                <input
+                  type="text"
+                  placeholder={tr3('e.g. Click Login button or scan barcode on demo screen', 'مثال: اضغط على تسجيل الدخول المباشر أو امسح الباركود', 'z. B. Über den Demo-Button direkt einloggen')}
+                  value={editingProj.demoCredentials?.method || ''}
+                  onChange={(e) => setEditingProj({
+                    ...editingProj,
+                    demoCredentials: {
+                      ...(editingProj.demoCredentials || {}),
+                      method: e.target.value
+                    }
+                  })}
+                  className="w-full text-xs p-2 border rounded dark:bg-slate-900 dark:border-slate-700"
+                />
+              </div>
+            </div>
+
             <div className="flex justify-end gap-2">
               <button type="button" onClick={() => setEditingProj(null)} className="px-3 py-1 text-xs border rounded">Cancel</button>
               <button type="submit" className="bg-amber-600 text-white px-4 py-1 rounded text-xs font-bold">Save Project</button>

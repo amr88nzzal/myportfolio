@@ -8,6 +8,33 @@
     <meta name="theme-color" content="#0A0F1D" />
     <title>Amro Nazzal | Financial Systems & Full-Stack Developer</title>
     <meta name="description" content="Professional portfolio and resume of Amro Nazzal, featuring 10+ years of expertise in financial systems, ERP implementation, and full-stack software development in Leipzig, Germany." />
+
+    <!-- Suppress third-party browser extension errors (e.g. MetaMask inpage.js) -->
+    <script>
+      (function() {
+        function isExtErr(msg, src, stack) {
+          var s = ((msg || '') + ' ' + (src || '') + ' ' + (stack || '')).toLowerCase();
+          return s.indexOf('metamask') !== -1 ||
+                 s.indexOf('chrome-extension://') !== -1 ||
+                 s.indexOf('moz-extension://') !== -1 ||
+                 s.indexOf('failed to connect to metamask') !== -1;
+        }
+        window.addEventListener('unhandledrejection', function(e) {
+          var r = e.reason || {};
+          if (isExtErr(r.message || String(r), '', r.stack || '')) {
+            e.preventDefault();
+            if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+          }
+        });
+        window.addEventListener('error', function(e) {
+          var err = e.error || {};
+          if (isExtErr(e.message, e.filename, err.stack || '')) {
+            e.preventDefault();
+            if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+          }
+        }, true);
+      })();
+    </script>
     
     <!-- OpenGraph / Facebook -->
     <meta property="og:type" content="profile" />

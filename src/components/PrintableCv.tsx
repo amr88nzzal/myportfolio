@@ -2,7 +2,7 @@ import React from 'react';
 import type { PortfolioData } from '../types';
 
 interface PrintableCvProps {
-  cvLanguage: any;
+  cvLanguage: 'en' | 'ar' | 'de';
   portfolio: PortfolioData;
 }
 
@@ -38,7 +38,7 @@ export default function PrintableCv({ cvLanguage, portfolio }: PrintableCvProps)
                 </div>
                 <p className="text-slate-500 italic text-[9px] mb-1">{exp.location[cvLanguage]}</p>
                 <ul className="list-disc ps-4 pe-4 space-y-1 text-slate-800 text-[9.5px]">
-                  {exp.highlights[cvLanguage].map((hl, idx) => (
+                  {exp.highlights[cvLanguage].map((hl: string, idx: number) => (
                     <li key={idx}>{hl}</li>
                   ))}
                 </ul>

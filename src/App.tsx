@@ -214,7 +214,7 @@ export default function App() {
           setGithubRepos(Array.isArray(d.repos) ? d.repos : []);
         }
       } catch (err) {
-        console.error('Error loading GitHub data:', err);
+        console.warn('Notice loading GitHub data:', err);
       } finally {
         setLoadingGithub(false);
       }
@@ -549,11 +549,32 @@ export default function App() {
   const handleSaveProject = (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingProj) return;
+
+    const rawCreds = editingProj.demoCredentials;
+    const hasCreds = Boolean(
+      rawCreds && (
+        (rawCreds.username && rawCreds.username.trim().length > 0) ||
+        (rawCreds.password && rawCreds.password.trim().length > 0) ||
+        (rawCreds.method && rawCreds.method.trim().length > 0)
+      )
+    );
+
+    const cleanedProj: Project = {
+      ...editingProj,
+      demoCredentials: hasCreds
+        ? {
+            username: rawCreds?.username?.trim() || undefined,
+            password: rawCreds?.password?.trim() || undefined,
+            method: rawCreds?.method?.trim() || undefined,
+          }
+        : undefined,
+    };
+
     let updated = [...portfolio.projects];
     if (isEditingNewProj) {
-      updated = [editingProj, ...updated];
+      updated = [cleanedProj, ...updated];
     } else {
-      updated = updated.map(p => p.id === editingProj.id ? editingProj : p);
+      updated = updated.map(p => p.id === cleanedProj.id ? cleanedProj : p);
     }
     savePortfolioToLocal({ ...portfolio, projects: updated });
     setEditingProj(null);

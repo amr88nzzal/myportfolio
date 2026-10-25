@@ -38,7 +38,7 @@ export default function AdminSkillsTab({ editingSkillCat, handleSaveSkillCategor
 
             <div className="space-y-2 pt-2 border-t">
               <span className="text-[11px] font-bold block">Skills List</span>
-              {editingSkillCat.skills.map((sk, idx) => (
+              {editingSkillCat.skills.map((sk: any, idx: number) => (
                 <div key={idx} className="flex items-center gap-3">
                   <input type="text" value={sk.name} onChange={(e) => {
                     const newSkills = [...editingSkillCat.skills];
@@ -53,7 +53,7 @@ export default function AdminSkillsTab({ editingSkillCat, handleSaveSkillCategor
                     {[1,2,3,4,5].map(v => <option key={v} value={v}>{v}/5</option>)}
                   </select>
                   <button type="button" onClick={() => {
-                    setEditingSkillCat({...editingSkillCat, skills: editingSkillCat.skills.filter((_, i) => i !== idx)});
+                    setEditingSkillCat({...editingSkillCat, skills: editingSkillCat.skills.filter((_: any, i: number) => i !== idx)});
                   }} className="text-red-500 hover:text-red-700 p-1"><Trash size={14} /></button>
                 </div>
               ))}

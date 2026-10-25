@@ -3,7 +3,7 @@ import { FileDown, X } from 'lucide-react';
 import type { PortfolioData } from '../types';
 
 interface CvViewerOverlayProps {
-  onScreenCvLang: any;
+  onScreenCvLang: 'en' | 'ar' | 'de' | null;
   portfolio: PortfolioData;
   setCvLanguage: (value: any) => void;
   setOnScreenCvLang: (value: any) => void;
@@ -66,7 +66,7 @@ export default function CvViewerOverlay({ onScreenCvLang, portfolio, setCvLangua
                       </div>
                       <p className="text-amber-600 dark:text-amber-500 italic text-[10px] mt-0.5">{exp.location[onScreenCvLang]}</p>
                       <ul className="list-disc ps-4 pe-4 space-y-1 text-slate-700 dark:text-slate-300 text-[10.5px] mt-1.5 text-justify font-sans">
-                        {exp.highlights[onScreenCvLang].map((hl, idx) => (
+                        {exp.highlights[onScreenCvLang].map((hl: string, idx: number) => (
                           <li key={idx}>{hl}</li>
                         ))}
                       </ul>

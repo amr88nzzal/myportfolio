@@ -1,5 +1,5 @@
 import React from 'react';
-import { ExternalLink } from 'lucide-react';
+import { ExternalLink, KeyRound } from 'lucide-react';
 import { translations } from '../i18n';
 import type { PortfolioData } from '../types';
 import { type Lang } from '../lib/helpers';
@@ -30,9 +30,56 @@ export default function ProjectsSection({ lang, portfolio }: ProjectsSectionProp
               </div>
 
               <div className="p-5 space-y-3 flex-1 flex flex-col justify-between">
-                <div className="space-y-1.5">
-                  <h3 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white leading-tight">{project.title[lang]}</h3>
-                  <p className="text-xs text-slate-600 dark:text-zinc-300 text-start leading-relaxed">{project.description[lang]}</p>
+                <div className="space-y-2">
+                  <div className="space-y-1">
+                    <h3 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white leading-tight">{project.title[lang]}</h3>
+                    <p className="text-xs text-slate-600 dark:text-zinc-300 text-start leading-relaxed">{project.description[lang]}</p>
+                  </div>
+
+                  {Boolean(
+                    project.demoCredentials && (
+                      (project.demoCredentials.username && project.demoCredentials.username.trim()) ||
+                      (project.demoCredentials.password && project.demoCredentials.password.trim()) ||
+                      (project.demoCredentials.method && project.demoCredentials.method.trim())
+                    )
+                  ) && (
+                    <div className="bg-slate-50 dark:bg-slate-900/80 border border-slate-200/90 dark:border-slate-800 rounded-lg p-2.5 text-[11px] font-mono space-y-1.5">
+                      <div className="text-[10px] font-bold uppercase tracking-wider text-amber-600 flex items-center gap-1">
+                        <KeyRound size={11} />
+                        <span>{{ en: 'Demo credentials & access', ar: 'بيانات وطريقة الدخول التجريبي', de: 'Demo-Zugangsdaten & Zugriff' }[lang]}</span>
+                      </div>
+                      <div className="flex flex-col gap-1 text-slate-700 dark:text-zinc-300">
+                        {project.demoCredentials?.method?.trim() && (
+                          <div className="text-[11px] font-sans text-slate-600 dark:text-zinc-300 leading-snug pb-0.5">
+                            <span className="font-mono text-[10px] font-semibold text-slate-500 dark:text-slate-400 block uppercase">
+                              {{ en: 'Access Method:', ar: 'طريقة الدخول:', de: 'Zugriffsmethode:' }[lang]}
+                            </span>
+                            <span>{project.demoCredentials.method}</span>
+                          </div>
+                        )}
+                        {project.demoCredentials?.username?.trim() && (
+                          <span className="truncate">
+                            <b className="font-semibold text-slate-500 dark:text-slate-400">
+                              {{ en: 'User:', ar: 'المستخدم:', de: 'Benutzer:' }[lang]}{' '}
+                            </b>
+                            <code className="bg-slate-200/50 dark:bg-slate-800 px-1 py-0.5 rounded select-all text-slate-900 dark:text-zinc-100">
+                              {project.demoCredentials.username}
+                            </code>
+                          </span>
+                        )}
+                        {project.demoCredentials?.password?.trim() && (
+                          <span className="truncate">
+                            <b className="font-semibold text-slate-500 dark:text-slate-400">
+                              {{ en: 'Pass:', ar: 'كلمة المرور:', de: 'Passwort:' }[lang]}{' '}
+                            </b>
+                            <code className="bg-slate-200/50 dark:bg-slate-800 px-1 py-0.5 rounded select-all text-slate-900 dark:text-zinc-100">
+                              {project.demoCredentials.password}
+                            </code>
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div className="space-y-2.5 pt-1">
